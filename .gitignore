@@ -1,0 +1,66 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Configuration (sensitive)
+config/config.yaml
+config/*.yaml
+!config/master_config.yaml
+*.env
+.env
+.env.local
+!.env.example
+
+# dbt
+dbt/transit_dbt/target/
+dbt/transit_dbt/dbt_packages/
+dbt/transit_dbt/profiles.yml
+!.dbt/profiles.yml
+
+# Airflow
+airflow/logs/
+airflow/plugins/
+airflow/airflow.db
+airflow/airflow-webserver.pid
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# AWS
+.aws/
+
+# Secrets
+secrets/
+*.pem
+*.key
+
+# Data
+data/raw/
+data/processed/
+data/local_test/
+*.csv
+*.parquet
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+

@@ -1,0 +1,74 @@
+name: 'transit_dbt'
+version: '1.0.0'
+config-version: 2
+
+# This setting configures which "profile" dbt uses for this project.
+profile: 'transit_dbt'
+
+# These configurations specify where dbt should look for different types of files.
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+# Configuring models
+models:
+  transit_dbt:
+    # Staging models - materialized as views (no storage cost)
+    staging:
+      +materialized: view
+      +schema: STAGING
+      +tags: ["staging"]
+    
+    # Transform models - materialized as tables (intermediate transformations)
+    transform:
+      +materialized: table
+      +schema: TRANSFORM
+      +tags: ["transform"]
+    
+    # Analytics models - materialized as tables (faster queries)
+    analytics:
+      +materialized: table
+      +schema: ANALYTICS
+      +tags: ["analytics"]
+      reliability_metrics:
+        +materialized: incremental
+        +unique_key: id
+        +incremental_strategy: merge
+      demand_metrics:
+        +materialized: incremental
+        +unique_key: id
+        +incremental_strategy: merge
+      crowding_metrics:
+        +materialized: incremental
+        +unique_key: id
+        +incremental_strategy: merge
+      revenue_metrics:
+        +materialized: incremental
+        +unique_key: id
+        +incremental_strategy: merge
+      decision_support:
+        +materialized: incremental
+        +unique_key: id
+        +incremental_strategy: merge
+
+# Variables
+vars:
+  # Snowflake configuration
+  snowflake_database: "{{ env_var('SNOWFLAKE_DATABASE') }}"
+  snowflake_raw_schema: "RAW"
+  snowflake_staging_schema: "STAGING"
+  snowflake_transform_schema: "TRANSFORM"
+  snowflake_analytics_schema: "ANALYTICS"
+  snowflake_ml_schema: "ML"
+  
+  # Timezone
+  default_timezone: "America/Los_Angeles"
+
