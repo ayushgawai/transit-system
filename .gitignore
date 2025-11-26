@@ -17,6 +17,11 @@ config/*.yaml
 .env.local
 !.env.example
 
+# Secrets file (contains actual credentials)
+secrets.yaml
+secrets.local.yaml
+*.secrets.yaml
+
 # dbt
 dbt/transit_dbt/target/
 dbt/transit_dbt/dbt_packages/

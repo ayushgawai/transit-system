@@ -40,8 +40,13 @@ GTFS_FEEDS = [
     {
         "agency": "Caltrain",
         "name": "Caltrain",
+        # Note: Caltrain's direct URL may redirect to HTML. Alternative sources:
+        # - transit.land: https://transit.land/api/v2/feeds?operated_by=o-9q9-caltrain
+        # - 511.org: https://511.org/open-data/transit
+        # For now, using transit.land's feed URL if available, otherwise skip
         "url": "https://www.caltrain.com/developer/GTFS.zip",
-        "timezone": "America/Los_Angeles"
+        "timezone": "America/Los_Angeles",
+        "enabled": False  # Disable until we find a working URL
     }
 ]
 
@@ -58,8 +63,25 @@ def download_gtfs_feed(url: str) -> bytes:
     """
     try:
         logger.info(f"Downloading GTFS feed from {url}")
-        response = requests.get(url, timeout=120)
+        # Follow redirects and set headers to avoid getting HTML pages
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (compatible; TransitSystem/1.0)',
+            'Accept': 'application/zip, application/octet-stream, */*'
+        }
+        response = requests.get(url, timeout=120, headers=headers, allow_redirects=True)
         response.raise_for_status()
+        
+        # Check if we got HTML instead of ZIP (common issue with some transit agency sites)
+        content_type = response.headers.get('Content-Type', '').lower()
+        if 'html' in content_type:
+            logger.warning(f"Received HTML instead of ZIP from {url}. Content-Type: {content_type}")
+            raise ValueError(f"URL returned HTML instead of ZIP file. The feed URL may be incorrect or require authentication.")
+        
+        # Basic check: ZIP files should start with PK (ZIP file signature)
+        if len(response.content) < 4 or response.content[:2] != b'PK':
+            logger.error(f"Downloaded content does not appear to be a ZIP file (first bytes: {response.content[:20]})")
+            raise ValueError("Downloaded content is not a valid ZIP file")
+        
         logger.info(f"Successfully downloaded {len(response.content)} bytes")
         return response.content
     except requests.exceptions.RequestException as e:
@@ -285,6 +307,11 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         
         # Sync each feed
         for feed_info in feeds:
+            # Skip disabled feeds
+            if feed_info.get("enabled", True) is False:
+                logger.info(f"Skipping disabled feed: {feed_info.get('agency', 'UNKNOWN')}")
+                continue
+                
             feed_result = sync_gtfs_feed(feed_info, raw_bucket)
             results["feeds_synced"].append(feed_result)
             

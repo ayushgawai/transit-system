@@ -24,17 +24,14 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## 🔑 Step 2: Configure Environment Variables
+## 🔑 Step 2: Configure Secrets and Environment Variables
 
-1. **Copy the .env example file:**
-```bash
-cp .env.example .env
-```
+**Option A: Using secrets.yaml (Recommended - One file for everything)**
 
-2. **Edit `.env` and fill in your values:**
+1. **Edit `secrets.yaml` and fill in all your credentials:**
 ```bash
-# Open .env in your editor
-nano .env  # or use your preferred editor
+# Open secrets.yaml in your editor
+nano secrets.yaml  # or use your preferred editor (VS Code, vim, etc.)
 ```
 
 Fill in at minimum:
@@ -50,27 +47,37 @@ Fill in at minimum:
 - `AWS_PROFILE`: AWS CLI profile name (e.g., `transit-system`)
 - `AWS_ACCOUNT_ID`: Your AWS account ID
 
-3. **Load environment variables:**
+2. **Load secrets into environment variables:**
 ```bash
-# Option A: Use the shell script (recommended for bash/zsh)
-source scripts/load_env.sh
-
-# Option B: Use the Python script (works in any shell)
-python scripts/load_env.py
-
-# Option C: Export manually (for quick testing)
-export $(cat .env | grep -v '^#' | xargs)
+# Load all secrets from secrets.yaml
+source scripts/load_secrets.sh
 ```
 
-4. **Verify environment variables are loaded:**
+**Option B: Using .env file (Alternative)**
+
+1. **Copy the .env example file:**
+```bash
+cp .env.example .env
+```
+
+2. **Edit `.env` and fill in your values**
+
+3. **Load environment variables:**
+```bash
+source scripts/load_env.sh
+```
+
+**Verify environment variables are loaded:**
 ```bash
 echo $SNOWFLAKE_ACCOUNT
 echo $SNOWFLAKE_USER
 ```
 
 **Important:** 
-- Never commit `.env` file (it's already in `.gitignore`)
-- The `.env` file will be automatically used by all scripts, dbt, Airflow, and can be exported to AWS Secrets Manager for deployment
+- Never commit `secrets.yaml` or `.env` files (already in `.gitignore`)
+- Use `secrets.yaml` for convenience (one file for all credentials)
+- All scripts, dbt, Airflow will automatically use these environment variables
+- See [SECRETS.md](./SECRETS.md) for more details on secrets management
 
 ## 🪣 Step 3: Setup AWS Profile (for Local Testing)
 

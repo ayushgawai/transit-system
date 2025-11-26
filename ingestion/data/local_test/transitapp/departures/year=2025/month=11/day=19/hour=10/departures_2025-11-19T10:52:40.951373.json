@@ -1,0 +1,803 @@
+{
+  "stop": {
+    "city_name": "",
+    "distance": 700,
+    "global_stop_id": "BART:3311",
+    "location_type": 0,
+    "parent_station": {
+      "city_name": "",
+      "global_stop_id": "BART:2506",
+      "location_type": 1,
+      "raw_stop_id": "mtc:civic-center-bart",
+      "rt_stop_id": "mtc:civic-center-bart",
+      "station_code": "",
+      "station_name": "Civic Center BART"
+    },
+    "parent_station_global_stop_id": "BART:2506",
+    "raw_stop_id": "901401",
+    "route_type": 1,
+    "rt_stop_id": "901401",
+    "stop_code": "901401",
+    "stop_lat": 37.77944904848398,
+    "stop_lon": -122.4138832770952,
+    "stop_name": "Civic Center / UN Plaza",
+    "wheelchair_boarding": 0
+  },
+  "departures": {
+    "route_departures": [
+      {
+        "alerts": [
+          {
+            "created_at": 1763509740,
+            "description": "Due to ongoing Clipper upgrades, adding funds using vending machines requires holding your Clipper card (not tapping) at the reader, then swipe payment/insert cash, select value, and then HOLD the Clipper card again until the transaction is done. Thank you for your patience.",
+            "effect": "UNKNOWN_EFFECT",
+            "informed_entities": [
+              {
+                "global_route_id": "BART:118865"
+              }
+            ],
+            "severity": "Info",
+            "title": "BART.gov Alert"
+          }
+        ],
+        "compact_display_short_name": {
+          "boxed_text": "",
+          "elements": [
+            "bart-b",
+            "",
+            null
+          ],
+          "route_name_redundancy": false
+        },
+        "fares": [
+          {
+            "fare_media_type": 2,
+            "price_max": {
+              "currency_code": "USD",
+              "symbol": "$",
+              "text": "$\u202f8.20",
+              "value": 8.2
+            },
+            "price_min": {
+              "currency_code": "USD",
+              "symbol": "$",
+              "text": "$\u202f2.40",
+              "value": 2.4
+            }
+          }
+        ],
+        "global_route_id": "BART:118865",
+        "global_stop_id": "BART:3311",
+        "itineraries": [
+          {
+            "branch_code": "",
+            "direction_headsign": "Daly City",
+            "direction_id": 1,
+            "headsign": "SF / Daly City",
+            "merged_headsign": "Daly City",
+            "schedule_items": [
+              {
+                "arrival_time": 1763559960,
+                "departure_time": 1763560020,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771517",
+                "scheduled_arrival_time": 1763559960,
+                "scheduled_departure_time": 1763560020,
+                "trip_search_key": "BART:50117974:0:2:0",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763561160,
+                "departure_time": 1763561220,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771518",
+                "scheduled_arrival_time": 1763561160,
+                "scheduled_departure_time": 1763561220,
+                "trip_search_key": "BART:50117974:0:2:1",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763562360,
+                "departure_time": 1763562420,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771519",
+                "scheduled_arrival_time": 1763562360,
+                "scheduled_departure_time": 1763562420,
+                "trip_search_key": "BART:50117974:0:2:2",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763563560,
+                "departure_time": 1763563620,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771520",
+                "scheduled_arrival_time": 1763563560,
+                "scheduled_departure_time": 1763563620,
+                "trip_search_key": "BART:50117974:0:2:3",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763564760,
+                "departure_time": 1763564820,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771521",
+                "scheduled_arrival_time": 1763564760,
+                "scheduled_departure_time": 1763564820,
+                "trip_search_key": "BART:50117974:0:2:4",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763565960,
+                "departure_time": 1763566020,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771522",
+                "scheduled_arrival_time": 1763565960,
+                "scheduled_departure_time": 1763566020,
+                "trip_search_key": "BART:50117974:0:2:5",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763567160,
+                "departure_time": 1763567220,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771523",
+                "scheduled_arrival_time": 1763567160,
+                "scheduled_departure_time": 1763567220,
+                "trip_search_key": "BART:50117974:0:2:6",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763568360,
+                "departure_time": 1763568420,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771524",
+                "scheduled_arrival_time": 1763568360,
+                "scheduled_departure_time": 1763568420,
+                "trip_search_key": "BART:50117974:0:2:7",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763569560,
+                "departure_time": 1763569620,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771516",
+                "scheduled_arrival_time": 1763569560,
+                "scheduled_departure_time": 1763569620,
+                "trip_search_key": "BART:50117974:0:2:8",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763570760,
+                "departure_time": 1763570820,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771525",
+                "scheduled_arrival_time": 1763570760,
+                "scheduled_departure_time": 1763570820,
+                "trip_search_key": "BART:50117974:0:2:9",
+                "wheelchair_accessible": 0
+              }
+            ]
+          }
+        ],
+        "mode_name": "Subway",
+        "real_time_route_id": "BA:Blue-N",
+        "route_color": "0e7db6",
+        "route_display_short_name": {
+          "boxed_text": "",
+          "elements": [
+            "bart-b",
+            "",
+            null
+          ],
+          "route_name_redundancy": false
+        },
+        "route_image": "bart-b",
+        "route_long_name": "Dublin/Pleasanton - Daly City",
+        "route_network_id": "BART|SF Bay Area",
+        "route_network_name": "BART",
+        "route_short_name": "Blue",
+        "route_text_color": "ffffff",
+        "route_timezone": "America/Los_Angeles",
+        "route_type": 1,
+        "sorting_key": "Blue",
+        "tts_long_name": "Dublin/Pleasanton - Daly City",
+        "tts_short_name": "blue line",
+        "vehicle": {
+          "image": "vehicle-rail-bart-d",
+          "name": "train",
+          "name_inflection": "n"
+        }
+      },
+      {
+        "alerts": [
+          {
+            "created_at": 1763509740,
+            "description": "Due to ongoing Clipper upgrades, adding funds using vending machines requires holding your Clipper card (not tapping) at the reader, then swipe payment/insert cash, select value, and then HOLD the Clipper card again until the transaction is done. Thank you for your patience.",
+            "effect": "UNKNOWN_EFFECT",
+            "informed_entities": [
+              {
+                "global_route_id": "BART:118863"
+              }
+            ],
+            "severity": "Info",
+            "title": "BART.gov Alert"
+          }
+        ],
+        "compact_display_short_name": {
+          "boxed_text": "",
+          "elements": [
+            "bart-g",
+            "",
+            null
+          ],
+          "route_name_redundancy": false
+        },
+        "fares": [
+          {
+            "fare_media_type": 2,
+            "price_max": {
+              "currency_code": "USD",
+              "symbol": "$",
+              "text": "$\u202f9.95",
+              "value": 9.95
+            },
+            "price_min": {
+              "currency_code": "USD",
+              "symbol": "$",
+              "text": "$\u202f2.40",
+              "value": 2.4
+            }
+          }
+        ],
+        "global_route_id": "BART:118863",
+        "global_stop_id": "BART:3311",
+        "itineraries": [
+          {
+            "branch_code": "",
+            "direction_headsign": "Daly City",
+            "direction_id": 1,
+            "headsign": "SF / Daly City",
+            "merged_headsign": "Daly City",
+            "schedule_items": [
+              {
+                "arrival_time": 1763558340,
+                "departure_time": 1763558400,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771625",
+                "scheduled_arrival_time": 1763558340,
+                "scheduled_departure_time": 1763558400,
+                "trip_search_key": "BART:50117974:10:2:0",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763559540,
+                "departure_time": 1763559600,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771624",
+                "scheduled_arrival_time": 1763559540,
+                "scheduled_departure_time": 1763559600,
+                "trip_search_key": "BART:50117974:10:2:1",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763560740,
+                "departure_time": 1763560800,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771623",
+                "scheduled_arrival_time": 1763560740,
+                "scheduled_departure_time": 1763560800,
+                "trip_search_key": "BART:50117974:6:2:0",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763561940,
+                "departure_time": 1763562000,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771626",
+                "scheduled_arrival_time": 1763561940,
+                "scheduled_departure_time": 1763562000,
+                "trip_search_key": "BART:50117974:6:2:1",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763563140,
+                "departure_time": 1763563200,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771627",
+                "scheduled_arrival_time": 1763563140,
+                "scheduled_departure_time": 1763563200,
+                "trip_search_key": "BART:50117974:6:2:2",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763564340,
+                "departure_time": 1763564400,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771628",
+                "scheduled_arrival_time": 1763564340,
+                "scheduled_departure_time": 1763564400,
+                "trip_search_key": "BART:50117974:6:2:3",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763565540,
+                "departure_time": 1763565600,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771629",
+                "scheduled_arrival_time": 1763565540,
+                "scheduled_departure_time": 1763565600,
+                "trip_search_key": "BART:50117974:6:2:4",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763566740,
+                "departure_time": 1763566800,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771630",
+                "scheduled_arrival_time": 1763566740,
+                "scheduled_departure_time": 1763566800,
+                "trip_search_key": "BART:50117974:6:2:5",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763567940,
+                "departure_time": 1763568000,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771631",
+                "scheduled_arrival_time": 1763567940,
+                "scheduled_departure_time": 1763568000,
+                "trip_search_key": "BART:50117974:6:2:6",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763569140,
+                "departure_time": 1763569200,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771632",
+                "scheduled_arrival_time": 1763569140,
+                "scheduled_departure_time": 1763569200,
+                "trip_search_key": "BART:50117974:6:2:7",
+                "wheelchair_accessible": 0
+              }
+            ]
+          }
+        ],
+        "mode_name": "Subway",
+        "real_time_route_id": "BA:Green-N",
+        "route_color": "2e9b2b",
+        "route_display_short_name": {
+          "boxed_text": "",
+          "elements": [
+            "bart-g",
+            "",
+            null
+          ],
+          "route_name_redundancy": false
+        },
+        "route_image": "bart-g",
+        "route_long_name": "Berryessa/North San Jos\u00e9 - Daly City",
+        "route_network_id": "BART|SF Bay Area",
+        "route_network_name": "BART",
+        "route_short_name": "Green",
+        "route_text_color": "ffffff",
+        "route_timezone": "America/Los_Angeles",
+        "route_type": 1,
+        "sorting_key": "Green",
+        "tts_long_name": "Berryessa/North San Jos\u00e9 - Daly City",
+        "tts_short_name": "green line",
+        "vehicle": {
+          "image": "vehicle-rail-bart-d",
+          "name": "train",
+          "name_inflection": "n"
+        }
+      },
+      {
+        "alerts": [
+          {
+            "created_at": 1763509740,
+            "description": "Due to ongoing Clipper upgrades, adding funds using vending machines requires holding your Clipper card (not tapping) at the reader, then swipe payment/insert cash, select value, and then HOLD the Clipper card again until the transaction is done. Thank you for your patience.",
+            "effect": "UNKNOWN_EFFECT",
+            "informed_entities": [
+              {
+                "global_route_id": "BART:118864"
+              }
+            ],
+            "severity": "Info",
+            "title": "BART.gov Alert"
+          }
+        ],
+        "compact_display_short_name": {
+          "boxed_text": "",
+          "elements": [
+            "bart-r",
+            "",
+            null
+          ],
+          "route_name_redundancy": false
+        },
+        "fares": [
+          {
+            "fare_media_type": 2,
+            "price_max": {
+              "currency_code": "USD",
+              "symbol": "$",
+              "text": "$\u202f12.65",
+              "value": 12.65
+            },
+            "price_min": {
+              "currency_code": "USD",
+              "symbol": "$",
+              "text": "$\u202f2.40",
+              "value": 2.4
+            }
+          }
+        ],
+        "global_route_id": "BART:118864",
+        "global_stop_id": "BART:3311",
+        "itineraries": [
+          {
+            "branch_code": "",
+            "direction_headsign": "Millbrae",
+            "direction_id": 1,
+            "headsign": "SFO Airport / Millbrae",
+            "merged_headsign": "Millbrae",
+            "schedule_items": [
+              {
+                "arrival_time": 1763559060,
+                "departure_time": 1763559060,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771367",
+                "scheduled_arrival_time": 1763559060,
+                "scheduled_departure_time": 1763559060,
+                "trip_search_key": "BART:50117974:17:2:0",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763560260,
+                "departure_time": 1763560260,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771368",
+                "scheduled_arrival_time": 1763560260,
+                "scheduled_departure_time": 1763560260,
+                "trip_search_key": "BART:50117974:17:2:1",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763561460,
+                "departure_time": 1763561460,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771369",
+                "scheduled_arrival_time": 1763561460,
+                "scheduled_departure_time": 1763561460,
+                "trip_search_key": "BART:50117974:17:2:2",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763562660,
+                "departure_time": 1763562660,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771370",
+                "scheduled_arrival_time": 1763562660,
+                "scheduled_departure_time": 1763562660,
+                "trip_search_key": "BART:50117974:17:2:3",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763563860,
+                "departure_time": 1763563860,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771371",
+                "scheduled_arrival_time": 1763563860,
+                "scheduled_departure_time": 1763563860,
+                "trip_search_key": "BART:50117974:17:2:4",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763565060,
+                "departure_time": 1763565060,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771372",
+                "scheduled_arrival_time": 1763565060,
+                "scheduled_departure_time": 1763565060,
+                "trip_search_key": "BART:50117974:17:2:5",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763566260,
+                "departure_time": 1763566260,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771373",
+                "scheduled_arrival_time": 1763566260,
+                "scheduled_departure_time": 1763566260,
+                "trip_search_key": "BART:50117974:17:2:6",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763567460,
+                "departure_time": 1763567460,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771374",
+                "scheduled_arrival_time": 1763567460,
+                "scheduled_departure_time": 1763567460,
+                "trip_search_key": "BART:50117974:17:2:7",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763568660,
+                "departure_time": 1763568660,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771375",
+                "scheduled_arrival_time": 1763568660,
+                "scheduled_departure_time": 1763568660,
+                "trip_search_key": "BART:50117974:17:2:8",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763569860,
+                "departure_time": 1763569860,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771376",
+                "scheduled_arrival_time": 1763569860,
+                "scheduled_departure_time": 1763569860,
+                "trip_search_key": "BART:50117974:17:2:9",
+                "wheelchair_accessible": 0
+              }
+            ]
+          }
+        ],
+        "mode_name": "Subway",
+        "real_time_route_id": "BA:Red-N",
+        "route_color": "c40208",
+        "route_display_short_name": {
+          "boxed_text": "",
+          "elements": [
+            "bart-r",
+            "",
+            null
+          ],
+          "route_name_redundancy": false
+        },
+        "route_image": "bart-r",
+        "route_long_name": "Richmond - Millbrae",
+        "route_network_id": "BART|SF Bay Area",
+        "route_network_name": "BART",
+        "route_short_name": "Red",
+        "route_text_color": "ffffff",
+        "route_timezone": "America/Los_Angeles",
+        "route_type": 1,
+        "sorting_key": "Red",
+        "tts_long_name": "Richmond - Millbrae",
+        "tts_short_name": "red line",
+        "vehicle": {
+          "image": "vehicle-rail-bart-d",
+          "name": "train",
+          "name_inflection": "n"
+        }
+      },
+      {
+        "alerts": [
+          {
+            "created_at": 1763509740,
+            "description": "Due to ongoing Clipper upgrades, adding funds using vending machines requires holding your Clipper card (not tapping) at the reader, then swipe payment/insert cash, select value, and then HOLD the Clipper card again until the transaction is done. Thank you for your patience.",
+            "effect": "UNKNOWN_EFFECT",
+            "informed_entities": [
+              {
+                "global_route_id": "BART:118861"
+              }
+            ],
+            "severity": "Info",
+            "title": "BART.gov Alert"
+          }
+        ],
+        "compact_display_short_name": {
+          "boxed_text": "",
+          "elements": [
+            "bart-y",
+            "",
+            null
+          ],
+          "route_name_redundancy": false
+        },
+        "fares": [
+          {
+            "fare_media_type": 2,
+            "price_max": {
+              "currency_code": "USD",
+              "symbol": "$",
+              "text": "$\u202f15.95",
+              "value": 15.95
+            },
+            "price_min": {
+              "currency_code": "USD",
+              "symbol": "$",
+              "text": "$\u202f2.40",
+              "value": 2.4
+            }
+          }
+        ],
+        "global_route_id": "BART:118861",
+        "global_stop_id": "BART:3311",
+        "itineraries": [
+          {
+            "branch_code": "",
+            "direction_headsign": "San Francisco International Airport",
+            "direction_id": 1,
+            "headsign": "Millbrae (Caltrain Transfer Platform)",
+            "merged_headsign": "Millbrae (Caltrain Transfer Platform)",
+            "schedule_items": [
+              {
+                "arrival_time": 1763559300,
+                "departure_time": 1763559360,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1772017",
+                "scheduled_arrival_time": 1763559300,
+                "scheduled_departure_time": 1763559360,
+                "trip_search_key": "BART:50117974:23:2:0",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763559780,
+                "departure_time": 1763559840,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1772018",
+                "scheduled_arrival_time": 1763559780,
+                "scheduled_departure_time": 1763559840,
+                "trip_search_key": "BART:50117974:23:2:1",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763560500,
+                "departure_time": 1763560560,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771974",
+                "scheduled_arrival_time": 1763560500,
+                "scheduled_departure_time": 1763560560,
+                "trip_search_key": "BART:50117974:25:2:0",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763561040,
+                "departure_time": 1763561040,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771916",
+                "scheduled_arrival_time": 1763561040,
+                "scheduled_departure_time": 1763561040,
+                "trip_search_key": "BART:50117974:19:2:0",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763561700,
+                "departure_time": 1763561760,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771975",
+                "scheduled_arrival_time": 1763561700,
+                "scheduled_departure_time": 1763561760,
+                "trip_search_key": "BART:50117974:25:2:1",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763562240,
+                "departure_time": 1763562240,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771917",
+                "scheduled_arrival_time": 1763562240,
+                "scheduled_departure_time": 1763562240,
+                "trip_search_key": "BART:50117974:19:2:1",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763562900,
+                "departure_time": 1763562960,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771976",
+                "scheduled_arrival_time": 1763562900,
+                "scheduled_departure_time": 1763562960,
+                "trip_search_key": "BART:50117974:25:2:2",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763563440,
+                "departure_time": 1763563440,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771918",
+                "scheduled_arrival_time": 1763563440,
+                "scheduled_departure_time": 1763563440,
+                "trip_search_key": "BART:50117974:19:2:2",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763564100,
+                "departure_time": 1763564160,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771973",
+                "scheduled_arrival_time": 1763564100,
+                "scheduled_departure_time": 1763564160,
+                "trip_search_key": "BART:50117974:25:2:3",
+                "wheelchair_accessible": 0
+              },
+              {
+                "arrival_time": 1763564640,
+                "departure_time": 1763564640,
+                "is_cancelled": false,
+                "is_real_time": false,
+                "rt_trip_id": "BA:1771919",
+                "scheduled_arrival_time": 1763564640,
+                "scheduled_departure_time": 1763564640,
+                "trip_search_key": "BART:50117974:19:2:3",
+                "wheelchair_accessible": 0
+              }
+            ]
+          }
+        ],
+        "mode_name": "Subway",
+        "real_time_route_id": "BA:Yellow-N",
+        "route_color": "fedc00",
+        "route_display_short_name": {
+          "boxed_text": "",
+          "elements": [
+            "bart-y",
+            "",
+            null
+          ],
+          "route_name_redundancy": false
+        },
+        "route_image": "bart-y",
+        "route_long_name": "Antioch - SFO/Millbrae",
+        "route_network_id": "BART|SF Bay Area",
+        "route_network_name": "BART",
+        "route_short_name": "Yellow",
+        "route_text_color": "000000",
+        "route_timezone": "America/Los_Angeles",
+        "route_type": 1,
+        "sorting_key": "Yellow",
+        "tts_long_name": "Antioch - SFO/Millbrae",
+        "tts_short_name": "yellow line",
+        "vehicle": {
+          "image": "vehicle-rail-bart-d",
+          "name": "train",
+          "name_inflection": "n"
+        }
+      }
+    ]
+  },
+  "timestamp": "2025-11-19T10:52:40.951373"
+}

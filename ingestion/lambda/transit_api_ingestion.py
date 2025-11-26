@@ -49,25 +49,30 @@ def get_transitapp_api_key() -> str:
     return api_key
 
 
-def call_transitapp_api(api_key: str, endpoint: str, params: Dict[str, Any]) -> Dict[str, Any]:
+def call_transitapp_api(api_key: str, endpoint: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
     """
     Call TransitApp API v3.
     
     Args:
         api_key: TransitApp API key
-        endpoint: API endpoint (relative to base URL)
+        endpoint: API endpoint (relative to base URL, e.g., "public/stop_departures")
         params: Query parameters
         
     Returns:
         API response as dictionary
     """
-    base_url = "https://transit.land/api/v3"
+    # TransitApp API base URL (not transit.land)
+    base_url = "https://external.transitapp.com/v3"
     url = f"{base_url}/{endpoint}"
     
+    # TransitApp API uses apiKey in headers, not query parameters
     headers = {
-        "apikey": api_key,
+        "apiKey": api_key,
+        "Accept-Language": "en",
         "Content-Type": "application/json"
     }
+    
+    params = params.copy() if params else {}
     
     try:
         response = requests.get(url, headers=headers, params=params, timeout=30)
@@ -75,63 +80,80 @@ def call_transitapp_api(api_key: str, endpoint: str, params: Dict[str, Any]) -> 
         return response.json()
     except requests.exceptions.RequestException as e:
         logger.error(f"API call failed: {str(e)}")
+        if hasattr(e, 'response') and e.response is not None:
+            logger.error(f"Response status: {e.response.status_code}")
+            logger.error(f"Response body: {e.response.text[:500]}")
         raise
 
 
-def fetch_agencies(api_key: str) -> list:
-    """Fetch list of agencies from TransitApp API."""
-    params = {
-        "limit": 100,
-        "served_by": "o-9q9-bart,o-9q9-caltrain"  # Example agencies
-    }
-    response = call_transitapp_api(api_key, "agencies", params)
-    return response.get("agencies", [])
-
-
-def fetch_departures(api_key: str, stop_id: Optional[str] = None, 
-                     route_id: Optional[str] = None) -> Dict[str, Any]:
+def fetch_nearby_stops(api_key: str, lat: float, lon: float, max_distance: int = 600) -> list:
     """
-    Fetch real-time departures from TransitApp API.
+    Fetch nearby stops from TransitApp API.
     
     Args:
         api_key: TransitApp API key
-        stop_id: Optional stop ID to filter departures
-        route_id: Optional route ID to filter departures
+        lat: Latitude
+        lon: Longitude
+        max_distance: Maximum distance in meters (default 600)
         
     Returns:
-        Departures data
+        List of nearby stops
     """
-    params = {}
-    if stop_id:
-        params["stop_id"] = stop_id
-    if route_id:
-        params["route_id"] = route_id
-    params["limit"] = 100
+    params = {
+        "lat": lat,
+        "lon": lon,
+        "max_distance": max_distance
+    }
+    response = call_transitapp_api(api_key, "public/nearby_stops", params)
+    return response.get("stops", [])
+
+
+def fetch_stop_departures(api_key: str, global_stop_id: str, 
+                          max_num_departures: int = 10,
+                          should_update_realtime: bool = True) -> Dict[str, Any]:
+    """
+    Fetch real-time departures for a specific stop from TransitApp API.
     
-    response = call_transitapp_api(api_key, "departures", params)
+    Args:
+        api_key: TransitApp API key
+        global_stop_id: Global stop ID (e.g., "STM:88368" or "BART:12345")
+        max_num_departures: Maximum number of departures per route (1-10, default 10)
+        should_update_realtime: Whether to include real-time updates (default True)
+        
+    Returns:
+        Departures data with route_departures
+    """
+    params = {
+        "global_stop_id": global_stop_id,
+        "max_num_departures": max(1, min(10, max_num_departures)),
+        "should_update_realtime": "true" if should_update_realtime else "false"
+    }
+    
+    response = call_transitapp_api(api_key, "public/stop_departures", params)
     return response
 
 
-def fetch_alerts(api_key: str, agency_id: Optional[str] = None) -> Dict[str, Any]:
-    """Fetch service alerts from TransitApp API."""
-    params = {}
-    if agency_id:
-        params["agency_id"] = agency_id
-    params["limit"] = 100
+def fetch_multiple_stop_departures(api_key: str, stop_ids: list, 
+                                   max_num_departures: int = 10) -> Dict[str, Any]:
+    """
+    Fetch departures for multiple stops at once.
     
-    response = call_transitapp_api(api_key, "alerts", params)
-    return response
-
-
-def fetch_routes(api_key: str, agency_id: Optional[str] = None) -> Dict[str, Any]:
-    """Fetch routes information from TransitApp API."""
-    params = {}
-    if agency_id:
-        params["agency_id"] = agency_id
-    params["limit"] = 100
-    
-    response = call_transitapp_api(api_key, "routes", params)
-    return response
+    Args:
+        api_key: TransitApp API key
+        stop_ids: List of global stop IDs
+        max_num_departures: Maximum departures per stop
+        
+    Returns:
+        Dictionary mapping stop_id to departures data
+    """
+    results = {}
+    for stop_id in stop_ids:
+        try:
+            results[stop_id] = fetch_stop_departures(api_key, stop_id, max_num_departures)
+        except Exception as e:
+            logger.error(f"Error fetching departures for stop {stop_id}: {str(e)}")
+            results[stop_id] = {"error": str(e)}
+    return results
 
 
 def upload_to_s3(bucket: str, key: str, data: Dict[str, Any]) -> None:
@@ -199,22 +221,72 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
             "errors": []
         }
         
-        # Fetch agencies (once per run)
-        try:
-            agencies_data = fetch_agencies(api_key)
-            agencies_key = f"transitapp/agencies/{date_partition}/agencies_{timestamp}.json"
-            upload_to_s3(raw_bucket, agencies_key, agencies_data)
-            results["files_uploaded"].append(agencies_key)
-        except Exception as e:
-            error_msg = f"Error fetching agencies: {str(e)}"
-            logger.error(error_msg)
-            results["errors"].append(error_msg)
+        # Get monitoring locations from environment or use defaults (San Francisco area)
+        # Format: "lat1,lon1|lat2,lon2" or single "lat,lon"
+        monitoring_locations = os.environ.get('MONITORING_LOCATIONS', '37.7749,-122.4194')  # SF default
+        max_distance = int(os.environ.get('MAX_STOP_DISTANCE', '2000'))  # 2km default
         
-        # Fetch departures (real-time data)
-        try:
-            departures_data = fetch_departures(api_key)
+        # Parse monitoring locations
+        locations = []
+        for loc_str in monitoring_locations.split('|'):
+            parts = loc_str.split(',')
+            if len(parts) == 2:
+                try:
+                    locations.append((float(parts[0]), float(parts[1])))
+                except ValueError:
+                    logger.warning(f"Invalid location format: {loc_str}")
+        
+        if not locations:
+            # Default to San Francisco
+            locations = [(37.7749, -122.4194)]
+        
+        # Fetch nearby stops for each monitoring location
+        all_stops = []
+        for lat, lon in locations:
+            try:
+                stops = fetch_nearby_stops(api_key, lat, lon, max_distance)
+                all_stops.extend(stops)
+                logger.info(f"Found {len(stops)} stops near ({lat}, {lon})")
+            except Exception as e:
+                error_msg = f"Error fetching nearby stops for ({lat}, {lon}): {str(e)}"
+                logger.error(error_msg)
+                results["errors"].append(error_msg)
+        
+        # Save stops data
+        if all_stops:
+            stops_key = f"transitapp/stops/{date_partition}/stops_{timestamp}.json"
+            upload_to_s3(raw_bucket, stops_key, {"stops": all_stops, "timestamp": timestamp})
+            results["files_uploaded"].append(stops_key)
+        
+        # Fetch departures for each stop (limit to top stops to respect rate limits)
+        # TransitApp API: 5 calls/minute, so we'll prioritize stops
+        max_stops_to_monitor = int(os.environ.get('MAX_STOPS_TO_MONITOR', '10'))
+        stops_to_monitor = all_stops[:max_stops_to_monitor]
+        
+        departures_data = {}
+        for stop in stops_to_monitor:
+            stop_id = stop.get("global_stop_id")
+            if not stop_id:
+                continue
+                
+            try:
+                departures = fetch_stop_departures(api_key, stop_id, max_num_departures=10)
+                departures_data[stop_id] = {
+                    "stop": stop,
+                    "departures": departures
+                }
+            except Exception as e:
+                error_msg = f"Error fetching departures for stop {stop_id}: {str(e)}"
+                logger.error(error_msg)
+                results["errors"].append(error_msg)
+        
+        # Save departures data
+        if departures_data:
             departures_key = f"transitapp/departures/{date_partition}/departures_{timestamp}.json"
-            upload_to_s3(raw_bucket, departures_key, departures_data)
+            upload_to_s3(raw_bucket, departures_key, {
+                "departures": departures_data,
+                "timestamp": timestamp
+            })
             results["files_uploaded"].append(departures_key)
             
             # Optionally send to SQS for async processing
@@ -225,21 +297,6 @@ def lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     "bucket": raw_bucket,
                     "timestamp": timestamp
                 })
-        except Exception as e:
-            error_msg = f"Error fetching departures: {str(e)}"
-            logger.error(error_msg)
-            results["errors"].append(error_msg)
-        
-        # Fetch alerts
-        try:
-            alerts_data = fetch_alerts(api_key)
-            alerts_key = f"transitapp/alerts/{date_partition}/alerts_{timestamp}.json"
-            upload_to_s3(raw_bucket, alerts_key, alerts_data)
-            results["files_uploaded"].append(alerts_key)
-        except Exception as e:
-            error_msg = f"Error fetching alerts: {str(e)}"
-            logger.error(error_msg)
-            results["errors"].append(error_msg)
         
         # Update status if errors occurred
         if results["errors"]:
