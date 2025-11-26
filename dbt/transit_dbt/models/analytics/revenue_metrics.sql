@@ -8,98 +8,133 @@
   )
 }}
 
--- Analytics mart: Revenue Metrics
--- Links service reliability & ridership to financial impact
--- Note: Actual fare revenue data may need to come from additional sources
--- This uses departures as a proxy for ridership, then estimates revenue
+{#
+  Analytics Mart: Revenue Metrics
+  
+  Links service reliability & ridership to estimated financial impact.
+  Uses fare data from routes and departure counts as proxies.
+  
+  Note: For actual revenue, integrate fare collection data.
+  
+  Sources: stg_departures, stg_routes, reliability_metrics, demand_metrics
+#}
 
 WITH departures AS (
-    SELECT * FROM {{ ref('stg_departures') }}
+    SELECT 
+        route_global_id,
+        route_short_name,
+        departure_date,
+        COUNT(*) AS departure_count,
+        MAX(ingestion_timestamp) AS last_update
+    FROM {{ ref('stg_departures') }}
     {% if is_incremental() %}
-    WHERE load_timestamp > (SELECT MAX(updated_at) FROM {{ this }})
+    WHERE ingestion_timestamp > (SELECT COALESCE(MAX(updated_at), '1900-01-01') FROM {{ this }})
     {% endif %}
+    GROUP BY route_global_id, route_short_name, departure_date
+),
+
+routes AS (
+    SELECT DISTINCT
+        route_global_id,
+        route_short_name,
+        min_fare,
+        max_fare,
+        fare_currency
+    FROM {{ ref('stg_routes') }}
 ),
 
 reliability AS (
-    SELECT * FROM {{ ref('reliability_metrics') }}
-),
-
-demand AS (
-    SELECT * FROM {{ ref('demand_metrics') }}
-),
-
--- Estimate ridership from departure counts (proxy: assume ~30 passengers per departure on average)
--- In production, use actual fare collection data
-estimated_ridership AS (
-    SELECT
-        route_id,
+    SELECT 
+        route_global_id,
         departure_date,
-        SUM(total_departures) AS total_departures,
-        SUM(total_departures) * 30 AS estimated_ridership  -- Proxy: 30 passengers per departure
-    FROM demand
-    GROUP BY route_id, departure_date
+        AVG(on_time_pct) AS on_time_pct,
+        AVG(avg_delay_seconds) AS avg_delay_seconds,
+        AVG(reliability_score) AS reliability_score
+    FROM {{ ref('reliability_metrics') }}
+    GROUP BY route_global_id, departure_date
 ),
 
--- Estimate revenue (proxy: assume $2.50 average fare)
-estimated_revenue AS (
+-- Estimate ridership and revenue
+-- Assumptions (can be adjusted):
+-- - Average 25 passengers per departure
+-- - Use route's avg fare or default $2.50
+estimated_metrics AS (
     SELECT
-        route_id,
-        departure_date,
-        total_departures,
-        estimated_ridership,
-        estimated_ridership * 2.50 AS estimated_revenue
-    FROM estimated_ridership
+        d.route_global_id,
+        d.route_short_name,
+        d.departure_date,
+        d.departure_count,
+        
+        -- Estimated ridership (25 passengers per departure avg)
+        d.departure_count * 25 AS estimated_ridership,
+        
+        -- Use fare from routes or default $2.50
+        COALESCE((r.min_fare + r.max_fare) / 2, 2.50) AS avg_fare,
+        
+        -- Estimated revenue
+        d.departure_count * 25 * COALESCE((r.min_fare + r.max_fare) / 2, 2.50) AS estimated_revenue,
+        
+        -- Reliability metrics
+        rel.on_time_pct,
+        rel.avg_delay_seconds,
+        rel.reliability_score,
+        
+        d.last_update
+    FROM departures d
+    LEFT JOIN routes r ON d.route_global_id = r.route_global_id
+    LEFT JOIN reliability rel ON d.route_global_id = rel.route_global_id AND d.departure_date = rel.departure_date
 ),
 
--- Combine with reliability metrics
-revenue_with_reliability AS (
+-- Calculate revenue impact
+revenue_impact AS (
     SELECT
-        er.route_id,
-        er.departure_date,
-        er.total_departures,
-        er.estimated_ridership,
-        er.estimated_revenue,
-        r.on_time_performance_pct,
-        r.avg_delay_seconds,
-        r.reliability_score,
-        -- Revenue impact of delays (estimate: 5% ridership loss per 10-minute delay)
-        er.estimated_revenue * (1 - (GREATEST(0, r.avg_delay_seconds / 600) * 0.05)) AS revenue_after_delay_impact,
-        -- Potential revenue if on-time performance were 95%
+        *,
+        -- Revenue impact from delays
+        -- Assumption: 3% ridership loss per 5-minute avg delay
+        CASE 
+            WHEN avg_delay_seconds > 0 
+            THEN estimated_revenue * (1 - LEAST((avg_delay_seconds / 300) * 0.03, 0.20))  -- Cap at 20% loss
+            ELSE estimated_revenue
+        END AS revenue_after_delays,
+        
+        -- Potential revenue if reliability were 95%+
         CASE
-            WHEN r.on_time_performance_pct < 95
-            THEN er.estimated_revenue * (1 + ((95 - r.on_time_performance_pct) / 100) * 0.10)
-            ELSE er.estimated_revenue
-        END AS potential_revenue_high_reliability
-    FROM estimated_revenue er
-    LEFT JOIN (
-        SELECT
-            route_id,
-            departure_date,
-            AVG(on_time_performance_pct) AS on_time_performance_pct,
-            AVG(avg_delay_seconds) AS avg_delay_seconds,
-            AVG(reliability_score) AS reliability_score
-        FROM reliability
-        GROUP BY route_id, departure_date
-    ) r ON er.route_id = r.route_id AND er.departure_date = r.departure_date
+            WHEN on_time_pct < 95 
+            THEN estimated_revenue * (1 + ((95 - COALESCE(on_time_pct, 85)) / 100) * 0.08)
+            ELSE estimated_revenue
+        END AS potential_revenue_95_pct
+    FROM estimated_metrics
 )
 
 SELECT
-    {{ dbt_utils.generate_surrogate_key(['route_id', 'departure_date']) }} AS id,
-    route_id,
+    {{ dbt_utils.generate_surrogate_key(['route_global_id', 'departure_date']) }} AS id,
+    
+    route_global_id,
+    route_short_name,
     departure_date,
-    total_departures,
+    departure_count,
+    
+    -- Ridership & Revenue
     estimated_ridership,
-    estimated_revenue,
-    on_time_performance_pct,
-    avg_delay_seconds,
-    reliability_score,
-    revenue_after_delay_impact,
-    potential_revenue_high_reliability,
-    -- Revenue loss due to delays
-    estimated_revenue - revenue_after_delay_impact AS revenue_loss_delays,
-    -- Revenue opportunity from improving reliability
-    potential_revenue_high_reliability - estimated_revenue AS revenue_opportunity,
-    current_timestamp() AS created_at,
-    current_timestamp() AS updated_at
-FROM revenue_with_reliability
+    ROUND(avg_fare, 2) AS avg_fare,
+    ROUND(estimated_revenue, 2) AS estimated_revenue,
+    
+    -- Reliability
+    ROUND(on_time_pct, 2) AS on_time_pct,
+    ROUND(avg_delay_seconds, 2) AS avg_delay_seconds,
+    ROUND(reliability_score, 2) AS reliability_score,
+    
+    -- Revenue Impact
+    ROUND(revenue_after_delays, 2) AS revenue_after_delays,
+    ROUND(estimated_revenue - revenue_after_delays, 2) AS revenue_loss_delays,
+    ROUND(potential_revenue_95_pct, 2) AS potential_revenue_95_pct,
+    ROUND(potential_revenue_95_pct - estimated_revenue, 2) AS revenue_opportunity,
+    
+    -- Revenue per departure (efficiency metric)
+    ROUND(estimated_revenue / NULLIF(departure_count, 0), 2) AS revenue_per_departure,
+    
+    last_update,
+    CURRENT_TIMESTAMP() AS created_at,
+    CURRENT_TIMESTAMP() AS updated_at
 
+FROM revenue_impact

@@ -224,12 +224,41 @@ The Transit Service Reliability & Demand Planning System includes multiple dashb
 
 ---
 
-## Refresh Intervals
+## Refresh Intervals & Live Data Streaming
 
-- **Real-time metrics**: Every 5 minutes (as new data arrives via Snowpipe)
-- **Historical aggregations**: Every 10 minutes (after dbt transformations)
-- **Forecasts**: Daily at 3 AM UTC (after ML model refresh)
-- **Decision support**: Daily at 3 AM UTC (after metrics refresh)
+### Data Ingestion
+- **TransitApp API**: Polled every 5 minutes via Lambda (respects API rate limits)
+- **GTFS Static Feeds**: Synced daily
+- **Snowpipe**: Auto-loads new S3 files into Snowflake (near real-time, ~1-2 min latency)
+
+### Dashboard Refresh Strategy
+For **live/streaming dashboards**, we use a simple auto-refresh approach:
+
+1. **Auto-Refresh Dashboards** (Recommended - Simplest):
+   - Dashboards query Snowflake directly
+   - Auto-refresh every 30-60 seconds (configurable in BI tool)
+   - No additional infrastructure needed
+   - Works with Snowsight, QuickSight, Metabase
+   - **Why this works**: Data arrives every 5 minutes, dashboards refresh faster to show latest data
+
+2. **Refresh Intervals by Dashboard Type**:
+   - **Real-time metrics** (departures, delays): Auto-refresh every 30 seconds
+   - **Historical aggregations**: Auto-refresh every 2-5 minutes (after dbt transformations)
+   - **Forecasts**: Refresh daily at 3 AM UTC (after ML model refresh)
+   - **Decision support**: Refresh daily at 3 AM UTC (after metrics refresh)
+
+### Why Not Kafka/Flink?
+- **Overkill**: We only poll 5 times/minute (API rate limit)
+- **Cost**: Kafka/Flink require dedicated infrastructure (not free-tier friendly)
+- **Complexity**: Adds unnecessary operational overhead
+- **AWS-native is sufficient**: Lambda + S3 + Snowpipe provides near real-time data flow
+
+### Optional: WebSocket Push (Future Enhancement)
+If true push updates are needed later, we can add:
+- API Gateway WebSocket endpoint
+- Lambda function that pushes updates when new data arrives
+- Dashboard connects via WebSocket for instant updates
+- Still AWS-native, no Kafka/Flink needed
 
 ---
 

@@ -1,0 +1,64 @@
+version: 2
+
+sources:
+  - name: raw
+    description: "Raw landing tables for transit data"
+    database: "{{ env_var('SNOWFLAKE_DATABASE') }}"
+    schema: RAW
+    
+    tables:
+      - name: transit_departures
+        description: "Raw departure data from TransitApp API - APPEND ONLY"
+        columns:
+          - name: ingestion_id
+            description: "Unique ID for each ingestion batch"
+          - name: ingestion_timestamp
+            description: "When data was loaded into Snowflake"
+          - name: source_file
+            description: "S3 path or local file path"
+          - name: raw_json
+            description: "Full JSON response from API"
+          - name: stop_global_id
+            description: "Extracted stop ID for filtering"
+          - name: stop_name
+            description: "Extracted stop name"
+          - name: fetch_timestamp
+            description: "When API was called"
+        freshness:
+          warn_after: {count: 30, period: minute}
+          error_after: {count: 60, period: minute}
+        loaded_at_field: ingestion_timestamp
+
+      - name: transit_stops
+        description: "Raw stops/stations data from TransitApp API"
+        columns:
+          - name: ingestion_id
+            description: "Unique ID for each ingestion batch"
+          - name: raw_json
+            description: "Full JSON response with stops array"
+          - name: location_lat
+            description: "Query latitude"
+          - name: location_lon
+            description: "Query longitude"
+
+      - name: transit_alerts
+        description: "Service alerts and disruptions"
+        columns:
+          - name: raw_json
+            description: "Alert data"
+
+      - name: transit_gtfs_feeds
+        description: "Static GTFS feed data"
+        columns:
+          - name: agency
+            description: "Transit agency (BART, Caltrain, etc.)"
+          - name: gtfs_routes
+            description: "Parsed routes.txt as VARIANT"
+          - name: gtfs_stops
+            description: "Parsed stops.txt as VARIANT"
+
+      - name: transit_departures_stream
+        description: "CDC stream on departures - captures new inserts"
+        meta:
+          is_stream: true
+

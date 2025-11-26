@@ -1,0 +1,102 @@
+# ============================================================================
+# KAFKA LOCAL DEVELOPMENT SETUP
+# ============================================================================
+# This runs Apache Kafka locally for streaming development.
+# 
+# Usage:
+#   cd kafka
+#   docker-compose up -d
+#
+# Stop:
+#   docker-compose down
+#
+# View logs:
+#   docker-compose logs -f kafka
+#
+# Kafka is FREE and open source!
+# ============================================================================
+
+version: '3.8'
+
+services:
+  # Zookeeper - Required for Kafka coordination
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: transit-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+      - zookeeper-logs:/var/lib/zookeeper/log
+    networks:
+      - transit-network
+
+  # Kafka Broker
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: transit-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"      # External access
+      - "29092:29092"    # Internal Docker network
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # Log retention (keep messages for 24 hours)
+      KAFKA_LOG_RETENTION_HOURS: 24
+      KAFKA_LOG_RETENTION_BYTES: 1073741824  # 1GB max per partition
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks:
+      - transit-network
+
+  # Kafka UI - Web interface to view topics/messages
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: transit-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: transit-local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - transit-network
+
+  # Schema Registry (optional - for Avro schemas)
+  # Uncomment if you want to use Avro serialization
+  # schema-registry:
+  #   image: confluentinc/cp-schema-registry:7.5.0
+  #   container_name: transit-schema-registry
+  #   depends_on:
+  #     - kafka
+  #   ports:
+  #     - "8081:8081"
+  #   environment:
+  #     SCHEMA_REGISTRY_HOST_NAME: schema-registry
+  #     SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:29092
+  #   networks:
+  #     - transit-network
+
+networks:
+  transit-network:
+    driver: bridge
+
+volumes:
+  zookeeper-data:
+  zookeeper-logs:
+  kafka-data:
+

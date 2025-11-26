@@ -1,63 +1,98 @@
 {{
   config(
-    materialized='view',
-    schema='staging',
+    materialized='incremental',
+    unique_key='alert_key',
+    incremental_strategy='merge',
+    schema='STAGING',
     tags=['staging']
   )
 }}
 
--- Staging model for TransitApp API alerts data
--- Cleans and normalizes raw JSON from transitapp/alerts/ S3 prefix
+{#
+  Staging model for TransitApp API alerts data
+  
+  Source: RAW.TRANSIT_ALERTS (landing table)
+  
+  Alerts are embedded in departure responses under route_departures.alerts
+  This model also processes standalone alert data if available
+#}
 
-WITH raw_alerts AS (
-    SELECT
-        PARSE_JSON(value) AS json_data,
-        metadata$filename AS source_file,
-        current_timestamp() AS load_timestamp
-    FROM {{ var('snowflake_raw_schema') }}.TRANSITAPP_API_CALLS
-    WHERE source_file LIKE '%alerts%'
-      AND json_data IS NOT NULL
+WITH source_departures AS (
+    -- Extract alerts from departure data (they're nested in route_departures)
+    SELECT 
+        ingestion_id,
+        ingestion_timestamp,
+        source_file,
+        raw_json,
+        fetch_timestamp
+    FROM {{ source('raw', 'transit_departures') }}
+    {% if is_incremental() %}
+    WHERE ingestion_timestamp > (SELECT COALESCE(MAX(ingestion_timestamp), '1900-01-01') FROM {{ this }})
+    {% endif %}
 ),
 
+-- Extract alerts from route_departures
 flattened_alerts AS (
     SELECT
-        a.value:alert_id::STRING AS alert_id,
-        a.value:agency_id::STRING AS agency_id,
-        a.value:route_id::STRING AS route_id,
-        a.value:stop_id::STRING AS stop_id,
-        a.value:title::STRING AS title,
-        a.value:description::STRING AS description,
-        a.value:severity::STRING AS severity,
-        a.value:start_time::TIMESTAMP_NTZ AS start_time,
-        a.value:end_time::TIMESTAMP_NTZ AS end_time,
-        a.value:effect::STRING AS effect,
-        rd.source_file,
-        rd.load_timestamp
-    FROM raw_alerts rd,
-    LATERAL FLATTEN(input => rd.json_data:alerts) a
+        s.ingestion_id,
+        s.ingestion_timestamp,
+        s.source_file,
+        s.fetch_timestamp,
+        rd.value:global_route_id::STRING AS route_global_id,
+        alert.value:title::STRING AS alert_title,
+        alert.value:description::STRING AS alert_description,
+        alert.value:severity::STRING AS alert_severity,
+        alert.value:effect::STRING AS alert_effect,
+        alert.value:cause::STRING AS alert_cause,
+        alert.value:created_at::INT AS created_at_unix,
+        alert.value:updated_at::INT AS updated_at_unix,
+        alert.value:active_period AS active_period,
+        alert.value:informed_entities AS informed_entities,
+        alert.value:url::STRING AS alert_url
+    FROM source_departures s,
+    LATERAL FLATTEN(input => s.raw_json:departures:route_departures, OUTER => TRUE) rd,
+    LATERAL FLATTEN(input => rd.value:alerts, OUTER => TRUE) alert
+    WHERE alert.value IS NOT NULL
 )
 
 SELECT
-    alert_id,
-    agency_id,
-    route_id,
-    stop_id,
-    title,
-    description,
-    severity,
-    start_time,
-    end_time,
-    effect,
-    -- Calculate alert duration in minutes
-    DATEDIFF(MINUTE, start_time, COALESCE(end_time, current_timestamp())) AS duration_minutes,
-    -- Check if alert is currently active
-    CASE
-        WHEN current_timestamp() BETWEEN start_time AND COALESCE(end_time, current_timestamp()) THEN TRUE
-        ELSE FALSE
-    END AS is_active,
+    -- Generate unique key
+    MD5(
+        COALESCE(route_global_id, '') || '|' ||
+        COALESCE(alert_title, '') || '|' ||
+        COALESCE(TO_VARCHAR(created_at_unix), '') || '|' ||
+        COALESCE(TO_VARCHAR(ingestion_timestamp), '')
+    ) AS alert_key,
+    
+    -- Alert info
+    alert_title,
+    alert_description,
+    alert_severity,
+    alert_effect,
+    alert_cause,
+    alert_url,
+    
+    -- Affected route
+    route_global_id,
+    
+    -- Timestamps
+    TO_TIMESTAMP_NTZ(created_at_unix) AS alert_created_at,
+    TO_TIMESTAMP_NTZ(updated_at_unix) AS alert_updated_at,
+    
+    -- Active period (if available)
+    active_period,
+    
+    -- Entities affected
+    informed_entities,
+    
+    -- Metadata
+    ingestion_id,
+    ingestion_timestamp,
     source_file,
-    load_timestamp,
-    current_timestamp() AS created_at
-FROM flattened_alerts
-WHERE alert_id IS NOT NULL
+    fetch_timestamp,
+    
+    -- Audit
+    CURRENT_TIMESTAMP() AS dbt_loaded_at
 
+FROM flattened_alerts
+WHERE alert_title IS NOT NULL OR alert_description IS NOT NULL

@@ -10,23 +10,21 @@
 # TRANSIT DATA SOURCES
 # =============================================================================
 transit_app:
-  api_base_url: "https://transit.land/api/v3"
+  api_base_url: "https://external.transitapp.com/v3"
   api_key: "${TRANSIT_APP_API_KEY}"  # Set via environment variable
   rate_limit_calls_per_min: 5
   rate_limit_calls_per_month: 1500
   ingestion_interval_minutes: 5  # Respect rate limit (5 calls/min)
   
-  # Transit agencies to monitor (use agency IDs from TransitApp)
-  agencies:
-    - id: "o-9q9-bart"  # Example: BART (Bay Area Rapid Transit)
-      name: "BART"
-      timezone: "America/Los_Angeles"
-    - id: "o-9q9-caltrain"  # Example: Caltrain
-      name: "Caltrain"
-      timezone: "America/Los_Angeles"
+  # Monitoring locations (latitude, longitude pairs)
+  # Format: "lat1,lon1|lat2,lon2" or single "lat,lon"
+  # Default: San Francisco area
+  monitoring_locations: "37.7749,-122.4194"  # San Francisco
+  max_stop_distance: 2000  # Maximum distance in meters to search for stops
+  max_stops_to_monitor: 10  # Maximum number of stops to fetch departures for (respects rate limits)
   
-  # Routes to prioritize (leave empty for all routes)
-  priority_routes: []  # e.g., ["BART::1", "BART::2"]
+  # Example additional locations:
+  # monitoring_locations: "37.7749,-122.4194|37.7849,-122.4094"  # Multiple locations
 
 gtfs:
   # Public GTFS feed URLs (MUST be publicly accessible)

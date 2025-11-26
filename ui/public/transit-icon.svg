@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <rect width="100" height="100" rx="20" fill="#3FB950"/>
+  <g fill="white">
+    <!-- Transit route icon inspired by Transit App -->
+    <circle cx="30" cy="35" r="6"/>
+    <circle cx="30" cy="65" r="6"/>
+    <circle cx="70" cy="50" r="6"/>
+    <path d="M30 41 L30 59" stroke="white" stroke-width="4" stroke-linecap="round"/>
+    <path d="M36 35 L64 50" stroke="white" stroke-width="4" stroke-linecap="round"/>
+    <path d="M36 65 L64 50" stroke="white" stroke-width="4" stroke-linecap="round"/>
+  </g>
+</svg>
+
