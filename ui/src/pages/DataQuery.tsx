@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { getApiBaseUrl } from '../utils/api'
 import clsx from 'clsx'
 import axios from 'axios'
 
@@ -54,7 +55,7 @@ export default function DataQuery() {
 
     try {
       // Call the API backend
-      const response = await axios.post('http://localhost:8000/api/chat', {
+      const response = await axios.post(`${getApiBaseUrl()}/chat`, {
         message: input
       })
 
@@ -75,7 +76,7 @@ export default function DataQuery() {
       const errorResponse: Message = {
         id: (Date.now() + 1).toString(),
         type: 'assistant',
-        content: "⚠️ I'm having trouble connecting to the AI service. Please make sure:\n\n1. The API server is running (`python api/main.py`)\n2. The Perplexity API key is configured\n\nPlease try again or contact the developer (Ayush Gawai).",
+        content: "⚠️ I'm having trouble connecting to the AI service. Please make sure:\n\n1. The API server is running (`python api/main.py`)\n2. The Perplexity API key is configured\n\nPlease try again.",
         timestamp: new Date(),
       }
       setMessages((prev) => [...prev, errorResponse])
@@ -292,12 +293,11 @@ export default function DataQuery() {
             </p>
           </div>
 
-          {/* Developer Credit */}
+          {/* Credit */}
           <div className="p-3 rounded-lg bg-dark-bg border border-dark-border text-center">
             <p className="text-xs text-dark-muted">
-              Developed by <span className="text-transit-500 font-medium">Ayush Gawai</span>
+              SJSU Applied Data Science | MSDA Capstone Project © 2025
             </p>
-            <p className="text-xs text-dark-muted">SJSU ADS Capstone</p>
           </div>
         </div>
       </div>

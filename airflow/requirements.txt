@@ -1,0 +1,9 @@
+apache-airflow==2.9.2
+boto3
+pyyaml
+kafka-python
+confluent-kafka
+psycopg2-binary
+snowflake-connector-python
+requests
+

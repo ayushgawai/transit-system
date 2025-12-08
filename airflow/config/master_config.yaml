@@ -1,0 +1,306 @@
+# Master Configuration File
+# Transit Service Reliability & Demand Planning System
+# 
+# IMPORTANT: 
+# - Never commit this file with real credentials to version control
+# - Use environment variables or AWS Secrets Manager in production
+# - Replace all placeholder values before deployment
+
+# =============================================================================
+# TRANSIT DATA SOURCES
+# =============================================================================
+transit_app:
+  api_base_url: "https://external.transitapp.com/v3"
+  api_key: "${TRANSIT_APP_API_KEY}"  # Set via environment variable
+  rate_limit_calls_per_min: 5
+  rate_limit_calls_per_month: 1500
+  ingestion_interval_minutes: 5  # Respect rate limit (5 calls/min)
+  
+  # Monitoring locations (latitude, longitude pairs)
+  # Format: "lat1,lon1|lat2,lon2" or single "lat,lon"
+  # Default: San Francisco area
+  monitoring_locations: "37.7749,-122.4194"  # San Francisco
+  max_stop_distance: 2000  # Maximum distance in meters to search for stops
+  max_stops_to_monitor: 10  # Maximum number of stops to fetch departures for (respects rate limits)
+  
+  # Example additional locations:
+  # monitoring_locations: "37.7749,-122.4194|37.7849,-122.4094"  # Multiple locations
+
+gtfs:
+  # Public GTFS feed URLs (MUST be publicly accessible)
+  feeds:
+    - agency: "BART"
+      url: "https://www.bart.gov/dev/schedules/google_transit.zip"
+      sync_schedule: "daily"  # or "weekly"
+    - agency: "Caltrain"
+      url: "https://www.caltrain.com/developer/GTFS.zip"
+      sync_schedule: "daily"
+  
+  # Local storage for GTFS files
+  local_storage_path: "/tmp/gtfs_feeds"
+
+# =============================================================================
+# AWS CONFIGURATION
+# =============================================================================
+aws:
+  region: "us-west-2"  # Change to your preferred region
+  
+  # S3 Buckets
+  s3:
+    raw_data_bucket: "transit-raw-data-{account_id}"  # Will be replaced in CloudFormation
+    processed_data_bucket: "transit-processed-{account_id}"
+    artifacts_bucket: "transit-artifacts-{account_id}"
+  
+  # SQS Queue
+  sqs:
+    ingestion_queue_name: "transit-ingestion-queue"
+    dead_letter_queue_name: "transit-ingestion-dlq"
+    visibility_timeout_seconds: 300
+    message_retention_days: 14
+  
+  # Lambda Configuration
+  lambda:
+    ingestion_function_name: "transit-api-ingestion"
+    gtfs_sync_function_name: "transit-gtfs-sync"
+    timeout_seconds: 300
+    memory_mb: 512
+    
+  # EventBridge Schedules
+  schedules:
+    api_ingestion_cron: "rate(5 minutes)"  # Every 5 minutes
+    gtfs_sync_cron: "cron(0 2 * * ? *)"    # Daily at 2 AM UTC
+
+# =============================================================================
+# SNOWFLAKE CONFIGURATION
+# =============================================================================
+snowflake:
+  account: "${SNOWFLAKE_ACCOUNT}"  # e.g., "xy12345.us-west-2"
+  user: "${SNOWFLAKE_USER}"
+  password: "${SNOWFLAKE_PASSWORD}"  # Use secrets manager in production
+  warehouse: "${SNOWFLAKE_WAREHOUSE}"
+  database: "${SNOWFLAKE_DATABASE}"
+  schema_raw: "RAW"
+  schema_staging: "STAGING"
+  schema_transform: "TRANSFORM"
+  schema_analytics: "ANALYTICS"
+  schema_ml: "ML"
+  role: "${SNOWFLAKE_ROLE}"
+  
+  # Snowpipe Configuration
+  snowpipe:
+    integration_name: "TRANSIT_S3_INTEGRATION"
+    pipe_name: "TRANSIT_RAW_PIPE"
+    notification_channel_sqs_arn: "${SQS_NOTIFICATION_ARN}"  # Set by CloudFormation
+    
+  # Storage Integration (for Snowpipe)
+  storage_integration:
+    name: "TRANSIT_S3_STORAGE_INTEGRATION"
+
+# =============================================================================
+# AIRFLOW CONFIGURATION
+# =============================================================================
+airflow:
+  # If using AWS MWAA (Managed Workflows for Apache Airflow)
+  mwaa_environment_name: "transit-airflow-env"
+  
+  # If self-hosting Airflow
+  self_hosted:
+    webserver_url: "http://localhost:8080"
+    api_url: "http://localhost:8080/api/v1"
+  
+  # dbt Configuration for Airflow
+  dbt:
+    project_dir: "/opt/airflow/dags/dbt/transit_dbt"
+    profiles_dir: "/opt/airflow/dags/dbt"
+    target: "prod"  # or "dev"
+    
+  # DAG Schedule
+  dags:
+    ingestion_schedule: "*/5 * * * *"  # Every 5 minutes
+    transformation_schedule: "*/10 * * * *"  # Every 10 minutes (after ingestion)
+    ml_refresh_schedule: "0 3 * * *"  # Daily at 3 AM UTC
+
+# =============================================================================
+# DBT CONFIGURATION
+# =============================================================================
+dbt:
+  project_name: "transit_dbt"
+  version: "1.5.0"
+  
+  models:
+    # Model materialization strategies
+    staging:
+      materialized: "view"  # Views for staging (no storage cost)
+    marts:
+      materialized: "table"  # Tables for marts (faster queries)
+  
+  seeds:
+    # Reference data (e.g., route metadata, stop metadata)
+    enabled: true
+    seed_dir: "seeds"
+
+# =============================================================================
+# ML MODEL CONFIGURATION
+# =============================================================================
+ml:
+  # Snowflake ML Models
+  models:
+    demand_forecast:
+      enabled: true
+      forecast_horizon_hours: 24
+      prediction_interval: "hourly"
+      features:
+        - "hour_of_day"
+        - "day_of_week"
+        - "route_id"
+        - "stop_id"
+        - "historical_boarding_avg"
+        - "weather_temperature"  # If available
+      
+    delay_forecast:
+      enabled: true
+      forecast_horizon_hours: 48
+      prediction_interval: "hourly"
+      
+    crowding_forecast:
+      enabled: true
+      forecast_horizon_hours: 24
+      prediction_interval: "hourly"
+  
+  # Retrain schedule
+  retrain_schedule: "weekly"  # or "daily", "monthly"
+
+# =============================================================================
+# BI DASHBOARD CONFIGURATION
+# =============================================================================
+dashboard:
+  # Amazon QuickSight
+  quicksight:
+    enabled: false  # Set to true if using QuickSight
+    region: "us-west-2"
+    account_id: "${AWS_ACCOUNT_ID}"
+    
+  # Snowsight (Snowflake native BI)
+  snowsight:
+    enabled: true  # Free, built into Snowflake
+    default_worksheet: "transit_reliability_worksheet"
+  
+  # Metabase (alternative open-source option)
+  metabase:
+    enabled: false
+    host: "http://localhost:3000"
+    admin_email: "${METABASE_ADMIN_EMAIL}"
+    admin_password: "${METABASE_ADMIN_PASSWORD}"
+    
+  # Dashboard refresh intervals
+  refresh_interval_minutes: 5
+
+# =============================================================================
+# CHATBOT CONFIGURATION
+# =============================================================================
+chatbot:
+  enabled: true
+  
+  # LLM Provider Options
+  llm_provider: "openai"  # Options: "openai", "anthropic", "local"
+  
+  # OpenAI Configuration (Free tier: GPT-3.5-turbo)
+  openai:
+    api_key: "${OPENAI_API_KEY}"
+    model: "gpt-3.5-turbo"
+    temperature: 0.3
+    max_tokens: 500
+  
+  # Local LLM (e.g., Llama via Ollama)
+  local:
+    enabled: false
+    api_base_url: "http://localhost:11434"
+    model: "llama2"
+  
+  # Chatbot capabilities
+  capabilities:
+    - "demand_forecasting"
+    - "reliability_metrics"
+    - "crowding_insights"
+    - "revenue_analysis"
+    - "fleet_recommendations"
+  
+  # Prompt engineering
+  system_prompt: |
+    You are a transit analytics assistant. Answer questions about transit service reliability, 
+    demand forecasting, crowding, and provide data-driven recommendations based on the Snowflake 
+    data warehouse. Be concise and actionable.
+
+# =============================================================================
+# MONITORING & ALERTING
+# =============================================================================
+monitoring:
+  cloudwatch:
+    # Lambda error alarms
+    lambda_error_threshold: 1  # Alert if >1 error in 5 minutes
+    lambda_duration_threshold_ms: 250000  # Alert if duration >250s (near timeout)
+    
+    # SQS queue depth alarm
+    sqs_queue_depth_threshold: 100  # Alert if >100 messages queued
+    
+    # S3 bucket size alarm (for cost control)
+    s3_bucket_size_gb_threshold: 10  # Alert if raw bucket >10GB
+  
+  # Snowflake usage alerts (via Snowflake notifications or scheduled SQL)
+  snowflake:
+    daily_credit_threshold: 1.0  # Alert if daily credits >1 (free tier monitoring)
+    warehouse_suspend_after_idle_seconds: 60
+
+# =============================================================================
+# COST MANAGEMENT
+# =============================================================================
+cost_management:
+  # Budget alerts (via AWS Budgets)
+  monthly_budget_usd: 10.0  # Set low threshold for free-tier monitoring
+  
+  # Cost optimization
+  s3_lifecycle:
+    raw_data_retention_days: 90  # Move to Glacier after 90 days, delete after 1 year
+    raw_data_glacier_days: 180
+    
+  # Lambda cost optimization
+  lambda_reserved_concurrency: 2  # Limit concurrent executions
+
+# =============================================================================
+# LOGGING
+# =============================================================================
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "json"  # json or text
+  
+  # CloudWatch Logs
+  cloudwatch:
+    retention_days: 7  # Free tier: 5GB ingestion, 5GB storage
+  
+  # Snowflake query history
+  snowflake_query_logging: true
+
+# =============================================================================
+# DEVELOPMENT / LOCAL TESTING
+# =============================================================================
+development:
+  # Local testing mode (bypasses some AWS services)
+  local_mode: false
+  
+  # Mock data for testing
+  use_mock_data: false
+  mock_data_path: "./data/mock"
+  
+  # Local Airflow
+  local_airflow_home: "/opt/airflow"
+  
+  # Local dbt
+  local_dbt_project: "./dbt/transit_dbt"
+
+# =============================================================================
+# VERSION & DEPLOYMENT
+# =============================================================================
+version: "1.0.0"
+environment: "dev"  # dev, staging, prod
+deployment_date: "${DEPLOYMENT_DATE}"  # Set during deployment
+

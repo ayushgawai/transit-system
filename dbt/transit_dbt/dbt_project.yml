@@ -61,13 +61,12 @@ models:
 
 # Variables
 vars:
-  # Snowflake configuration
-  snowflake_database: "{{ env_var('SNOWFLAKE_DATABASE') }}"
-  snowflake_raw_schema: "RAW"
-  snowflake_staging_schema: "STAGING"
-  snowflake_transform_schema: "TRANSFORM"
-  snowflake_analytics_schema: "ANALYTICS"
-  snowflake_ml_schema: "ML"
+  # Warehouse configuration (works for both Redshift and Snowflake)
+  raw_schema: "RAW"
+  staging_schema: "STAGING"
+  transform_schema: "TRANSFORM"
+  analytics_schema: "ANALYTICS"
+  ml_schema: "ML"
   
   # Timezone
   default_timezone: "America/Los_Angeles"

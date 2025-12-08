@@ -1,6 +1,7 @@
 import { Outlet, NavLink } from 'react-router-dom'
 import { useState } from 'react'
 import clsx from 'clsx'
+import { useAgency } from '../contexts/AgencyContext'
 
 // Cities where TransitApp operates
 const cities = [
@@ -60,14 +61,18 @@ const navigation = [
   { name: 'Analytics', href: '/analytics', icon: icons.analytics },
   { name: 'Map View', href: '/map', icon: icons.map },
   { name: 'Forecasts', href: '/forecasts', icon: icons.forecast },
+  { name: 'Live Data', href: '/live-data', icon: icons.analytics },
   { name: 'Data Query', href: '/query', icon: icons.chat },
   { name: 'BI Dashboard', href: '/bi-dashboard', icon: icons.bi },
+  { name: 'Admin', href: '/admin', icon: icons.analytics },
 ]
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [selectedCity, setSelectedCity] = useState(cities[0])
   const [showCityDropdown, setShowCityDropdown] = useState(false)
+  const { agency, setAgency, availableAgencies } = useAgency()
+  const [showAgencyDropdown, setShowAgencyDropdown] = useState(false)
 
   return (
     <div className="min-h-screen bg-dark-bg bg-grid-pattern">
@@ -129,9 +134,7 @@ export default function Layout() {
                 </div>
               </div>
               <div className="text-xs text-dark-muted border-t border-dark-border/50 pt-2">
-                <div className="text-transit-500 font-medium">Developed by</div>
-                <div className="text-white">Ayush Gawai</div>
-                <div className="text-[10px] mt-1">MSDA Capstone Project © 2024</div>
+                <div className="text-[10px] mt-1">MSDA Capstone Project © 2025</div>
               </div>
             </div>
           ) : (
@@ -160,44 +163,44 @@ export default function Layout() {
             <div className="flex items-center gap-4">
               <h1 className="text-xl font-semibold text-white">Transit Operations Dashboard</h1>
               
-              {/* City Selector */}
+              {/* Agency Selector */}
               <div className="relative">
                 <button
-                  onClick={() => setShowCityDropdown(!showCityDropdown)}
+                  onClick={() => setShowAgencyDropdown(!showAgencyDropdown)}
                   className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-surface border border-dark-border hover:border-transit-500 transition-colors"
                 >
-                  <span>{selectedCity.flag}</span>
-                  <span className="text-white text-sm">{selectedCity.name}</span>
-                  <svg className={clsx('w-4 h-4 text-dark-muted transition-transform', showCityDropdown && 'rotate-180')} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <span className="text-white text-sm font-medium">{agency === 'All' ? 'All Agencies' : agency}</span>
+                  <svg className={clsx('w-4 h-4 text-dark-muted transition-transform', showAgencyDropdown && 'rotate-180')} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
                 
-                {showCityDropdown && (
-                  <div className="absolute top-full left-0 mt-2 w-56 py-2 bg-dark-surface border border-dark-border rounded-xl shadow-xl z-50">
-                    <div className="px-3 py-1 text-xs text-dark-muted border-b border-dark-border mb-1">Select City</div>
-                    {cities.map((city) => (
-                      <button
-                        key={city.id}
-                        onClick={() => {
-                          setSelectedCity(city)
-                          setShowCityDropdown(false)
-                        }}
-                        className={clsx(
-                          'w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-dark-hover transition-colors',
-                          selectedCity.id === city.id && 'bg-transit-500/10'
-                        )}
-                      >
-                        <span>{city.flag}</span>
-                        <div>
-                          <div className="text-sm text-white">{city.name}</div>
-                          <div className="text-xs text-dark-muted">{city.country}</div>
-                        </div>
-                        {selectedCity.id === city.id && (
-                          <span className="ml-auto text-transit-500">✓</span>
-                        )}
-                      </button>
-                    ))}
+                {showAgencyDropdown && (
+                  <div className="absolute top-full left-0 mt-2 w-48 py-2 bg-dark-surface border border-dark-border rounded-xl shadow-xl z-50">
+                    <div className="px-3 py-1 text-xs text-dark-muted border-b border-dark-border mb-1">Select Transit Agency</div>
+                    {availableAgencies.map((ag) => {
+                      // Color code agencies
+                      const agencyColor = ag === 'BART' ? '#FFD700' : ag === 'VTA' ? '#00A0E3' : '#3FB950'
+                      return (
+                        <button
+                          key={ag}
+                          onClick={() => {
+                            setAgency(ag)
+                            setShowAgencyDropdown(false)
+                          }}
+                          className={clsx(
+                            'w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-dark-hover transition-colors',
+                            agency === ag && 'bg-transit-500/10'
+                          )}
+                        >
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: agencyColor }}></div>
+                          <div className="text-sm text-white">{ag === 'All' ? 'All Agencies' : ag}</div>
+                          {agency === ag && (
+                            <span className="ml-auto text-transit-500">✓</span>
+                          )}
+                        </button>
+                      )
+                    })}
                   </div>
                 )}
               </div>
@@ -208,22 +211,23 @@ export default function Layout() {
               </div>
             </div>
             <div className="flex items-center gap-4">
-              {/* Last Updated */}
-              <div className="text-sm text-dark-muted">
-                Last updated: <span className="text-white font-mono">Just now</span>
-              </div>
-              {/* Notifications */}
-              <button className="relative p-2 rounded-lg hover:bg-dark-hover transition-colors">
-                <svg className="w-5 h-5 text-dark-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-                <span className="absolute top-1 right-1 w-2 h-2 bg-severity-danger rounded-full"></span>
-              </button>
-              {/* User */}
+              {/* Powered by Transit Logo */}
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-transit-500 to-severity-info flex items-center justify-center text-white font-semibold text-sm">
-                  AG
-                </div>
+                <span className="text-xs text-dark-muted">Powered by</span>
+                <img 
+                  src="/transit-logo.png" 
+                  alt="Transit" 
+                  className="h-8 object-contain opacity-90 hover:opacity-100 transition-opacity"
+                  onError={(e) => {
+                    // Fallback if image doesn't load
+                    const target = e.currentTarget
+                    target.style.display = 'none'
+                    const fallback = document.createElement('span')
+                    fallback.className = 'text-sm font-semibold text-transit-500'
+                    fallback.textContent = 'TRANSIT'
+                    target.parentElement?.appendChild(fallback)
+                  }}
+                />
               </div>
             </div>
           </div>

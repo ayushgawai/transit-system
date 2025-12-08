@@ -1,0 +1,62 @@
+# Transit System Configuration
+# Controls warehouse selection and other system settings
+
+# Warehouse Configuration
+# Options: 'redshift' or 'snowflake'
+# Default: 'redshift'
+warehouse:
+  type: 'snowflake'  # Change to 'snowflake' to use Snowflake instead
+  redshift:
+    cluster_identifier: 'transit-redshift-cluster'
+    database: 'transit_db'
+    schema: 'public'
+    port: 5439
+    region: 'us-west-2'
+  snowflake:
+    account: ''  # Will be loaded from AWS Secrets Manager
+    user: ''     # Will be loaded from AWS Secrets Manager
+    password: '' # Will be loaded from AWS Secrets Manager
+    warehouse: 'HORNET_QUERY_WH'
+    database: 'USER_DB_HORNET'
+    role: 'TRAINING_ROLE'
+    schema: 'ANALYTICS'
+
+# Data Sources
+data_sources:
+  gtfs:
+    initial_load_date: '2025-08-01'  # First load from Aug 1, 2025
+    incremental: true
+  transit_api:
+    streaming_enabled: true
+    kafka_topic: 'transit-streaming'
+
+# DBT Configuration
+dbt:
+  project_dir: 'dbt/transit_dbt'
+  profiles_dir: 'dbt'
+  target: 'snowflake'  # Snowflake only
+
+# Airflow Configuration
+airflow:
+  dags_folder: 'airflow/dags'
+  schedule_interval_gtfs: '0 */6 * * *'  # Every 6 hours
+  schedule_interval_streaming: '0 * * * *'  # Every hour
+
+# Kafka Configuration
+kafka:
+  bootstrap_servers: 'localhost:9092'
+  topics:
+    streaming: 'transit-streaming'
+    landing: 'transit-landing'
+  consumer_group: 'transit-consumers'
+
+# ML Configuration
+ml:
+  provider: 'snowflake'  # Options: 'local', 'snowflake'
+  forecast_horizon_hours: 6
+
+# Frontend Configuration
+frontend:
+  api_base_url: 'http://localhost:8000/api'
+  refresh_interval_seconds: 30
+

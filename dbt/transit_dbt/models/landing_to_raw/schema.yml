@@ -1,0 +1,94 @@
+version: 2
+
+models:
+  - name: stg_gtfs_stops
+    description: "GTFS stops staging model"
+    columns:
+      - name: stop_id
+        description: "Unique stop identifier"
+        tests:
+          - not_null
+      - name: stop_lat
+        description: "Stop latitude"
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: -90
+                max_value: 90
+      - name: stop_lon
+        description: "Stop longitude"
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: -180
+                max_value: 180
+      - name: agency
+        description: "Transit agency"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['BART', 'VTA']
+
+  - name: stg_gtfs_routes
+    description: "GTFS routes staging model"
+    columns:
+      - name: route_id
+        description: "Unique route identifier"
+        tests:
+          - unique
+          - not_null
+      - name: agency
+        description: "Transit agency"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['BART', 'VTA']
+      - name: route_type
+        description: "Route type (0=Tram, 1=Subway, 3=Bus)"
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+                max_value: 7
+
+  - name: stg_gtfs_trips
+    description: "GTFS trips staging model"
+    columns:
+      - name: trip_id
+        description: "Unique trip identifier"
+        tests:
+          - unique
+          - not_null
+      - name: route_id
+        description: "Route identifier"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_gtfs_routes')
+              field: route_id
+
+  - name: stg_gtfs_stop_times
+    description: "GTFS stop times staging model"
+    columns:
+      - name: trip_id
+        description: "Trip identifier"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_gtfs_trips')
+              field: trip_id
+      - name: stop_id
+        description: "Stop identifier"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('stg_gtfs_stops')
+              field: stop_id
+      - name: stop_sequence
+        description: "Stop sequence in trip"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: 0
+

@@ -1,31 +1,65 @@
 import { useState, useEffect } from 'react'
+import { getApiBaseUrl } from '../utils/api'
 import clsx from 'clsx'
-
-// SF Bay Area stops (real coordinates)
-const stops = [
-  { id: 1, name: 'Civic Center / UN Plaza', lat: 37.7794, lon: -122.4139, departures: 40, routes: ['Blue', 'Red'], status: 'active' },
-  { id: 2, name: '16th St Mission', lat: 37.7649, lon: -122.4194, departures: 35, routes: ['Blue'], status: 'active' },
-  { id: 3, name: '24th St Mission', lat: 37.7524, lon: -122.4182, departures: 28, routes: ['Blue'], status: 'active' },
-  { id: 4, name: 'Powell St', lat: 37.7844, lon: -122.4079, departures: 52, routes: ['Blue', 'Red', 'Yellow'], status: 'alert' },
-  { id: 5, name: 'Montgomery St', lat: 37.7894, lon: -122.4013, departures: 48, routes: ['Blue', 'Red', 'Green'], status: 'active' },
-  { id: 6, name: 'Embarcadero', lat: 37.7928, lon: -122.3968, departures: 55, routes: ['Blue', 'Red', 'Green', 'Yellow'], status: 'active' },
-  { id: 7, name: 'Glen Park', lat: 37.7329, lon: -122.4344, departures: 22, routes: ['Blue'], status: 'active' },
-  { id: 8, name: 'Balboa Park', lat: 37.7210, lon: -122.4474, departures: 18, routes: ['Blue', 'Green'], status: 'active' },
-  { id: 9, name: 'Daly City', lat: 37.7064, lon: -122.4693, departures: 30, routes: ['Blue', 'Green', 'Yellow'], status: 'active' },
-  { id: 10, name: 'Colma', lat: 37.6846, lon: -122.4669, departures: 15, routes: ['Yellow'], status: 'active' },
-]
-
-const routeColors: Record<string, string> = {
-  Blue: '#58A6FF',
-  Red: '#F85149',
-  Green: '#3FB950',
-  Yellow: '#D29922',
-}
+import { useAgency } from '../contexts/AgencyContext'
 
 export default function MapView() {
-  const [selectedStop, setSelectedStop] = useState<typeof stops[0] | null>(null)
+  const { agency } = useAgency()
+  const [stops, setStops] = useState<any[]>([])
+  const [selectedStop, setSelectedStop] = useState<any | null>(null)
   const [mapLayer, setMapLayer] = useState<'demand' | 'performance'>('demand')
   const [mapLoaded, setMapLoaded] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [cityInfo, setCityInfo] = useState<string>('')
+
+  useEffect(() => {
+    fetchStops()
+  }, [agency])
+
+  const fetchStops = async () => {
+    setLoading(true)
+    try {
+      const url = agency === 'All'
+        ? `${getApiBaseUrl()}/stops?limit=100`
+        : `${getApiBaseUrl()}/stops?agency=${agency}&limit=100`
+      
+      const response = await fetch(url)
+      const result = await response.json()
+      
+      if (result.success && result.data) {
+        const fetchedStops = result.data.map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          lat: s.lat,
+          lon: s.lon,
+          departures: s.departures || 0,
+          routes: [],
+          status: s.status || 'active',
+          agency: s.agency
+        }))
+        setStops(fetchedStops)
+        
+        // Extract city info from agency
+        const agencyCityMap: Record<string, string> = {
+          'BART': 'San Francisco Bay Area',
+          'VTA': 'San Jose',
+          'Caltrain': 'San Francisco Peninsula'
+        }
+        if (agency && agency !== 'All') {
+          setCityInfo(agencyCityMap[agency] || agency)
+        } else if (fetchedStops.length > 0) {
+          const firstStop = fetchedStops[0]
+          if (firstStop.agency) {
+            setCityInfo(agencyCityMap[firstStop.agency] || firstStop.agency)
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching stops:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
     // Dynamically load Leaflet
@@ -46,13 +80,31 @@ export default function MapView() {
     const mapContainer = document.getElementById('transit-map')
     if (!mapContainer) return
 
-    // Check if map already exists
+    // Remove existing map if it exists
     if ((mapContainer as any)._leaflet_id) {
-      return
+      const existingMap = (mapContainer as any)._leaflet_map
+      if (existingMap) {
+        existingMap.remove()
+        delete (mapContainer as any)._leaflet_id
+        delete (mapContainer as any)._leaflet_map
+      }
     }
 
-    // Create map centered on SF
-    const map = L.map('transit-map').setView([37.7749, -122.4194], 12)
+    // Default center (SF Bay Area) if no stops
+    let centerLat = 37.7749
+    let centerLon = -122.4194
+    let zoom = 10
+
+    if (stops.length > 0) {
+      // Calculate center from stops
+      centerLat = stops.reduce((sum, s) => sum + s.lat, 0) / stops.length
+      centerLon = stops.reduce((sum, s) => sum + s.lon, 0) / stops.length
+      zoom = 12
+    }
+
+    // Create map
+    const map = L.map('transit-map').setView([centerLat, centerLon], zoom)
+    ;(mapContainer as any)._leaflet_map = map
 
     // Add dark tile layer
     L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
@@ -62,55 +114,117 @@ export default function MapView() {
     }).addTo(map)
 
     // Add stop markers
-    stops.forEach((stop) => {
-      const color = stop.status === 'alert' ? '#F85149' : '#3FB950'
-      const size = mapLayer === 'demand' ? Math.max(10, stop.departures / 3) : 15
+    const markers: any[] = []
+    if (stops.length > 0) {
+      stops.forEach((stop) => {
+        try {
+          // Color coding based on map layer and metrics
+          let color = '#8B949E' // default grey for 0
+          if (mapLayer === 'demand') {
+            // Color by total departures (grey for 0, green for 1+, dark green for more)
+            const departures = stop.departures || 0
+            if (departures === 0) color = '#8B949E' // Grey for 0
+            else if (departures === 1) color = '#3FB950' // Green for 1
+            else if (departures > 1 && departures <= 10) color = '#238636' // Dark green for 2-10
+            else if (departures > 10 && departures <= 50) color = '#1a5f28' // Darker green for 11-50
+            else color = '#0e3a16' // Darkest green for 50+
+          } else {
+            // Color by performance (on-time percentage)
+            const onTimePct = (stop as any).on_time_pct || 100
+            if (onTimePct >= 90) color = '#3FB950' // Excellent - green
+            else if (onTimePct >= 75) color = '#D29922' // Good - yellow
+            else if (onTimePct >= 60) color = '#F85149' // Poor - red
+            else color = '#8B949E' // Very poor - gray
+          }
+          
+          const size = mapLayer === 'demand' 
+            ? Math.max(8, Math.min(25, Math.sqrt((stop.departures || 0) / 10))) 
+            : 15
 
-      const icon = L.divIcon({
-        html: `
-          <div style="
-            width: ${size}px;
-            height: ${size}px;
-            background: ${color};
-            border: 2px solid white;
-            border-radius: 50%;
-            box-shadow: 0 0 10px ${color}80;
-          "></div>
-        `,
-        className: 'custom-marker',
-        iconSize: [size, size],
+          const icon = L.divIcon({
+            html: `
+              <div style="
+                width: ${size}px;
+                height: ${size}px;
+                background: ${color};
+                border: 2px solid white;
+                border-radius: 50%;
+                box-shadow: 0 0 10px ${color}80;
+              "></div>
+            `,
+            className: 'custom-marker',
+            iconSize: [size, size],
+          })
+
+          const marker = L.marker([stop.lat, stop.lon], { icon }).addTo(map)
+          markers.push(marker)
+
+          const routesServed = (stop as any).routes_served || 0
+          const avgDelay = (stop as any).avg_delay || 0
+          const onTimePct = (stop as any).on_time_pct || 100
+          
+          marker.bindPopup(`
+            <div style="background: #161B22; color: white; padding: 10px; border-radius: 8px; min-width: 200px;">
+              <strong style="color: #3FB950; font-size: 14px;">${stop.name || 'Unknown Stop'}</strong>
+              ${stop.agency ? `<div style="margin-top: 4px; font-size: 11px; color: #8B949E;">Agency: ${stop.agency}</div>` : ''}
+              <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid #30363D;">
+                <div style="font-size: 12px; color: #C9D1D9; margin-top: 4px;">
+                  <strong>Total Departures:</strong> ${(stop.departures || 0).toLocaleString()}
+                </div>
+                <div style="font-size: 12px; color: #C9D1D9; margin-top: 4px;">
+                  <strong>Routes Served:</strong> ${routesServed}
+                </div>
+                ${avgDelay > 0 ? `<div style="font-size: 12px; color: #C9D1D9; margin-top: 4px;">
+                  <strong>Avg Delay:</strong> ${avgDelay.toFixed(1)} min
+                </div>` : ''}
+                <div style="font-size: 12px; color: #C9D1D9; margin-top: 4px;">
+                  <strong>On-Time %:</strong> ${onTimePct.toFixed(1)}%
+                </div>
+              </div>
+            </div>
+          `)
+
+          marker.on('click', () => {
+            setSelectedStop(stop)
+          })
+        } catch (err) {
+          console.error('Error adding marker:', err)
+        }
       })
-
-      const marker = L.marker([stop.lat, stop.lon], { icon }).addTo(map)
-
-      marker.bindPopup(`
-        <div style="background: #161B22; color: white; padding: 8px; border-radius: 8px; min-width: 150px;">
-          <strong style="color: #3FB950;">${stop.name}</strong>
-          <div style="margin-top: 4px; font-size: 12px; color: #8B949E;">
-            ${stop.departures} departures today
-          </div>
-          <div style="margin-top: 4px; display: flex; gap: 4px;">
-            ${stop.routes.map(r => `<span style="background: ${routeColors[r]}; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px;">${r}</span>`).join('')}
-          </div>
-        </div>
-      `)
-
-      marker.on('click', () => {
-        setSelectedStop(stop)
-      })
-    })
+    } else {
+      // Show message if no stops
+      L.popup()
+        .setLatLng([centerLat, centerLon])
+        .setContent('<div style="color: #8B949E;">No stops available for selected agency</div>')
+        .openOn(map)
+    }
+    
+    // Store markers for cleanup
+    ;(mapContainer as any)._leaflet_markers = markers
 
     return () => {
-      map.remove()
+      if (map) {
+        map.remove()
+      }
     }
-  }, [mapLoaded, mapLayer])
+  }, [mapLoaded, mapLayer, stops])
 
   return (
     <div className="space-y-6">
+      {/* Agency Indicator */}
+      <div className="p-4 rounded-xl bg-dark-surface border border-dark-border">
+        <p className="text-sm text-dark-muted">
+          Viewing stops for: <span className="text-white font-semibold">{agency === 'All' ? 'All Agencies' : agency}</span>
+          {cityInfo && (
+            <> • Location: <span className="text-white font-semibold">{cityInfo}</span></>
+          )}
+        </p>
+      </div>
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Geographic View</h1>
-          <p className="text-dark-muted">Transit network visualization - San Francisco Bay Area</p>
+          <p className="text-dark-muted">Transit network visualization{loading ? ' (Loading...)' : ` - ${stops.length} stops`}</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -142,23 +256,42 @@ export default function MapView() {
           {/* Map Legend */}
           <div className="p-4 border-t border-dark-border flex items-center justify-between">
             <div className="flex items-center gap-6">
-              <span className="text-sm text-dark-muted">Routes:</span>
-              {Object.entries(routeColors).map(([name, color]) => (
-                <div key={name} className="flex items-center gap-2">
-                  <div className="w-4 h-1 rounded" style={{ backgroundColor: color }}></div>
-                  <span className="text-sm text-white">{name}</span>
-                </div>
-              ))}
+              <span className="text-sm text-dark-muted">
+                {stops.length > 0 ? `${stops.length} stops shown` : 'No stops available'}
+              </span>
             </div>
             <div className="flex items-center gap-4 text-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-transit-500"></div>
-                <span className="text-dark-muted">Active</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-severity-danger"></div>
-                <span className="text-dark-muted">Alert</span>
-              </div>
+              {mapLayer === 'demand' ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-transit-500"></div>
+                    <span className="text-dark-muted">High Demand (1000+)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-severity-info"></div>
+                    <span className="text-dark-muted">Medium (500-1000)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-severity-warning"></div>
+                    <span className="text-dark-muted">Low (100-500)</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-transit-500"></div>
+                    <span className="text-dark-muted">Excellent (90%+)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-severity-warning"></div>
+                    <span className="text-dark-muted">Good (75-90%)</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-severity-danger"></div>
+                    <span className="text-dark-muted">Poor (&lt;75%)</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -186,19 +319,18 @@ export default function MapView() {
                       <span className="w-2 h-2 rounded-full bg-severity-danger animate-pulse"></span>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    {stop.routes.map((route) => (
-                      <span
-                        key={route}
-                        className="px-2 py-0.5 rounded text-xs font-medium text-white"
-                        style={{ backgroundColor: routeColors[route] }}
-                      >
-                        {route}
-                      </span>
-                    ))}
-                  </div>
-                  <div className="text-xs text-dark-muted mt-1">
-                    {stop.departures} departures today
+                  {stop.agency && (
+                    <div className="text-xs text-dark-muted mt-1">
+                      Agency: {stop.agency}
+                    </div>
+                  )}
+                  <div className="text-xs text-dark-muted mt-1 space-y-1">
+                    <div>Total Departures: {(stop.departures || 0).toLocaleString()}</div>
+                    <div>Routes Served: {(stop as any).routes_served || 0}</div>
+                    {(stop as any).avg_delay > 0 && (
+                      <div>Avg Delay: {(stop as any).avg_delay.toFixed(1)} min</div>
+                    )}
+                    <div>On-Time: {((stop as any).on_time_pct || 100).toFixed(1)}%</div>
                   </div>
                 </button>
               ))}
@@ -217,8 +349,22 @@ export default function MapView() {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-dark-muted">Departures</span>
-                  <span className="text-white font-medium">{selectedStop.departures}</span>
+                  <span className="text-dark-muted">Total Departures</span>
+                  <span className="text-white font-medium">{(selectedStop.departures || 0).toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-dark-muted">Routes Served</span>
+                  <span className="text-white font-medium">{(selectedStop as any).routes_served || 0}</span>
+                </div>
+                {(selectedStop as any).avg_delay > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-dark-muted">Avg Delay</span>
+                    <span className="text-white font-medium">{(selectedStop as any).avg_delay.toFixed(1)} min</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-dark-muted">On-Time %</span>
+                  <span className="text-white font-medium">{((selectedStop as any).on_time_pct || 100).toFixed(1)}%</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-dark-muted">Coordinates</span>
@@ -226,20 +372,12 @@ export default function MapView() {
                     {selectedStop.lat.toFixed(4)}, {selectedStop.lon.toFixed(4)}
                   </span>
                 </div>
-                <div className="pt-2 border-t border-dark-border">
-                  <span className="text-dark-muted">Routes:</span>
-                  <div className="flex flex-wrap gap-1 mt-1">
-                    {selectedStop.routes.map((route) => (
-                      <span
-                        key={route}
-                        className="px-2 py-1 rounded text-xs font-medium text-white"
-                        style={{ backgroundColor: routeColors[route] }}
-                      >
-                        {route} Line
-                      </span>
-                    ))}
+                {selectedStop.agency && (
+                  <div className="pt-2 border-t border-dark-border">
+                    <span className="text-dark-muted">Agency:</span>
+                    <span className="text-white font-medium ml-2">{selectedStop.agency}</span>
                   </div>
-                </div>
+                )}
               </div>
             </div>
           )}
@@ -247,7 +385,7 @@ export default function MapView() {
           {/* Developer Credit */}
           <div className="p-3 rounded-lg bg-dark-bg border border-dark-border text-center">
             <p className="text-xs text-dark-muted">
-              Map by <span className="text-transit-500">Ayush Gawai</span>
+              Transit Operations Dashboard | SJSU Applied Data Science
             </p>
           </div>
         </div>

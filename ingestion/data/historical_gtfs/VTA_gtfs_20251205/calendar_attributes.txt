@@ -1,0 +1,4 @@
+service_id,service_description
+279.0.1,Weekday
+279.0.2,Saturday
+279.0.3,Sunday/Holiday

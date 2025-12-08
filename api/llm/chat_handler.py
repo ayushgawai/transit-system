@@ -28,14 +28,8 @@ class ChatHandler:
         Returns:
             Dict with response, any data, and metadata
         """
-        # Check for non-transit questions
-        if self._is_off_topic(user_message):
-            return {
-                "success": True,
-                "response": "I'm your transit operations assistant! I can help you with questions about route performance, on-time metrics, delays, ridership, and revenue. What would you like to know about your transit system?",
-                "data": None,
-                "sql": None
-            }
+        # Always assume questions are about transit data - don't reject
+        # The system prompt will guide the LLM to answer transit-related questions
         
         # First, fetch current data to provide context to LLM
         data_context = self._get_current_data_context()

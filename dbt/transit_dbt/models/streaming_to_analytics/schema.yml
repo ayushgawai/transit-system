@@ -1,0 +1,36 @@
+version: 2
+
+models:
+  - name: stg_streaming_departures
+    description: "Streaming departures from Transit API"
+    columns:
+      - name: stop_id
+        description: "Stop identifier"
+        tests:
+          - not_null
+      - name: route_id
+        description: "Route identifier"
+        tests:
+          - not_null
+      - name: agency
+        description: "Transit agency"
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['BART', 'VTA']
+      - name: delay_seconds
+        description: "Delay in seconds (can be negative for early)"
+        tests:
+          - dbt_utils.accepted_range:
+              arguments:
+                min_value: -3600
+                max_value: 3600
+      - name: is_real_time
+        description: "Whether data is real-time"
+        tests:
+          - not_null
+      - name: load_timestamp
+        description: "When data was loaded"
+        tests:
+          - not_null
+

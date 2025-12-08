@@ -1,7 +1,8 @@
 import axios from 'axios'
 import type { KPIData, Route, Stop, Alert, RouteHealth, Forecast, ApiResponse } from '../types'
+import { getApiBaseUrl } from '../utils/api'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || '/api'
+const API_BASE_URL = getApiBaseUrl()
 
 const api = axios.create({
   baseURL: API_BASE_URL,
