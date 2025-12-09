@@ -1,7 +1,7 @@
 -- Staging model: GTFS Routes from Landing to Raw
 {{ config(
     materialized='incremental',
-    unique_key='route_id',
+    unique_key=['route_id', 'agency'],
     incremental_strategy='merge'
 ) }}
 

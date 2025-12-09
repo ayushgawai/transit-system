@@ -134,6 +134,120 @@ dbt_landing_to_raw = PythonOperator(
     dag=dag,
 )
 
+def run_dbt_transform(**context):
+    """Run dbt transform models"""
+    import subprocess
+    from config.warehouse_config import get_warehouse_config
+    
+    config = get_warehouse_config()
+    dbt_project_dir = PROJECT_ROOT / "dbt" / "transit_dbt"
+    profiles_dir = PROJECT_ROOT / "dbt" / "transit_dbt"
+    
+    import os
+    snowflake_config = config.get_snowflake_config()
+    os.environ['SNOWFLAKE_ACCOUNT'] = snowflake_config.get('account', '')
+    os.environ['SNOWFLAKE_USER'] = snowflake_config.get('user', '')
+    os.environ['SNOWFLAKE_PASSWORD'] = snowflake_config.get('password', '')
+    os.environ['SNOWFLAKE_WAREHOUSE'] = snowflake_config.get('warehouse', '')
+    os.environ['SNOWFLAKE_DATABASE'] = snowflake_config.get('database', '')
+    os.environ['SNOWFLAKE_ROLE'] = snowflake_config.get('role', '')
+    os.environ['SNOWFLAKE_SCHEMA'] = snowflake_config.get('schema', 'ANALYTICS')
+    os.environ['DBT_PROFILES_DIR'] = str(profiles_dir)
+    
+    try:
+        import shutil
+        dbt_path = shutil.which('dbt')
+        if not dbt_path:
+            dbt_cmd = [sys.executable, "-c", "import dbt.main; dbt.main.main()", "run", "--select", "transform", "--target", "snowflake",
+                       "--project-dir", str(dbt_project_dir), "--profiles-dir", str(profiles_dir), "--profile", "transit_dbt"]
+        else:
+            dbt_cmd = [dbt_path, "run", "--select", "transform", "--target", "snowflake",
+                       "--project-dir", str(dbt_project_dir), "--profiles-dir", str(profiles_dir), "--profile", "transit_dbt"]
+        
+        env = os.environ.copy()
+        env['PATH'] = f"{os.path.expanduser('~/.local/bin')}:{env.get('PATH', '')}"
+        env['DBT_PROFILES_DIR'] = str(profiles_dir)
+        
+        run_result = subprocess.run(
+            dbt_cmd,
+            cwd=str(dbt_project_dir),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=600
+        )
+        
+        if run_result.returncode != 0:
+            error_msg = run_result.stderr or run_result.stdout
+            raise Exception(f"dbt run failed: {error_msg}")
+        
+        return f"dbt transform successful: {run_result.stdout[-500:]}"
+    except Exception as e:
+        raise Exception(f"dbt error: {str(e)}")
+
+def run_dbt_analytics(**context):
+    """Run dbt analytics models"""
+    import subprocess
+    from config.warehouse_config import get_warehouse_config
+    
+    config = get_warehouse_config()
+    dbt_project_dir = PROJECT_ROOT / "dbt" / "transit_dbt"
+    profiles_dir = PROJECT_ROOT / "dbt" / "transit_dbt"
+    
+    import os
+    snowflake_config = config.get_snowflake_config()
+    os.environ['SNOWFLAKE_ACCOUNT'] = snowflake_config.get('account', '')
+    os.environ['SNOWFLAKE_USER'] = snowflake_config.get('user', '')
+    os.environ['SNOWFLAKE_PASSWORD'] = snowflake_config.get('password', '')
+    os.environ['SNOWFLAKE_WAREHOUSE'] = snowflake_config.get('warehouse', '')
+    os.environ['SNOWFLAKE_DATABASE'] = snowflake_config.get('database', '')
+    os.environ['SNOWFLAKE_ROLE'] = snowflake_config.get('role', '')
+    os.environ['SNOWFLAKE_SCHEMA'] = snowflake_config.get('schema', 'ANALYTICS')
+    os.environ['DBT_PROFILES_DIR'] = str(profiles_dir)
+    
+    try:
+        import shutil
+        dbt_path = shutil.which('dbt')
+        if not dbt_path:
+            dbt_cmd = [sys.executable, "-c", "import dbt.main; dbt.main.main()", "run", "--select", "analytics", "--target", "snowflake",
+                       "--project-dir", str(dbt_project_dir), "--profiles-dir", str(profiles_dir), "--profile", "transit_dbt"]
+        else:
+            dbt_cmd = [dbt_path, "run", "--select", "analytics", "--target", "snowflake",
+                       "--project-dir", str(dbt_project_dir), "--profiles-dir", str(profiles_dir), "--profile", "transit_dbt"]
+        
+        env = os.environ.copy()
+        env['PATH'] = f"{os.path.expanduser('~/.local/bin')}:{env.get('PATH', '')}"
+        env['DBT_PROFILES_DIR'] = str(profiles_dir)
+        
+        run_result = subprocess.run(
+            dbt_cmd,
+            cwd=str(dbt_project_dir),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=600
+        )
+        
+        if run_result.returncode != 0:
+            error_msg = run_result.stderr or run_result.stdout
+            raise Exception(f"dbt run failed: {error_msg}")
+        
+        return f"dbt analytics successful: {run_result.stdout[-500:]}"
+    except Exception as e:
+        raise Exception(f"dbt error: {str(e)}")
+
+dbt_transform = PythonOperator(
+    task_id='dbt_transform',
+    python_callable=run_dbt_transform,
+    dag=dag,
+)
+
+dbt_analytics = PythonOperator(
+    task_id='dbt_analytics',
+    python_callable=run_dbt_analytics,
+    dag=dag,
+)
+
 # Trigger streaming DAG after GTFS completes
 trigger_streaming = TriggerDagRunOperator(
     task_id='trigger_streaming_dag',
@@ -142,6 +256,6 @@ trigger_streaming = TriggerDagRunOperator(
     dag=dag,
 )
 
-# Set dependencies: Fetch GTFS → Transform → Trigger Streaming
-fetch_gtfs >> dbt_landing_to_raw >> trigger_streaming
+# Set dependencies: Fetch GTFS → Landing to Raw → Transform → Analytics → Trigger Streaming
+fetch_gtfs >> dbt_landing_to_raw >> dbt_transform >> dbt_analytics >> trigger_streaming
 

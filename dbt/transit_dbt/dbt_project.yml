@@ -21,6 +21,18 @@ clean-targets:
 # Configuring models
 models:
   transit_dbt:
+    # Landing to Raw models - materialized as tables (cleaned raw data from landing)
+    landing_to_raw:
+      +materialized: table
+      +schema: RAW
+      +tags: ["landing_to_raw"]
+    
+    # Streaming to Analytics models - materialized as tables
+    streaming_to_analytics:
+      +materialized: table
+      +schema: RAW
+      +tags: ["streaming_to_analytics"]
+    
     # Staging models - materialized as views (no storage cost)
     staging:
       +materialized: view
@@ -38,6 +50,12 @@ models:
       +materialized: table
       +schema: ANALYTICS
       +tags: ["analytics"]
+    
+    # ML Forecast models - materialized as tables
+    ml_forecasts:
+      +materialized: table
+      +schema: ML
+      +tags: ["ml_forecasts"]
       reliability_metrics:
         +materialized: incremental
         +unique_key: id

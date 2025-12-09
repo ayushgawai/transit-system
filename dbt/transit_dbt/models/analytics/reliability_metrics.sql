@@ -22,24 +22,30 @@
 
 WITH departures AS (
     SELECT 
-        departure_key,
-        stop_global_id,
+        id as departure_key,
+        stop_id as stop_global_id,
         stop_name,
-        route_global_id,
+        route_id as route_global_id,
         route_short_name,
-        direction_headsign,
-        departure_time,
-        scheduled_departure_time,
+        '' as direction_headsign,  -- Not available in streaming data
+        TO_TIMESTAMP_NTZ(actual_departure_time) as departure_time,
+        TO_TIMESTAMP_NTZ(scheduled_departure_time) as scheduled_departure_time,
         delay_seconds,
-        delay_status,
+        CASE 
+            WHEN delay_seconds IS NULL THEN 'UNKNOWN'
+            WHEN delay_seconds <= 0 THEN 'ON_TIME'
+            WHEN delay_seconds <= 300 THEN 'LATE'
+            ELSE 'VERY_LATE'
+        END as delay_status,
         is_real_time,
-        departure_date,
-        departure_hour,
-        departure_day_of_week,
-        ingestion_timestamp
-    FROM {{ ref('stg_departures') }}
+        DATE(TO_TIMESTAMP_NTZ(scheduled_departure_time)) as departure_date,
+        HOUR(TO_TIMESTAMP_NTZ(scheduled_departure_time)) as departure_hour,
+        DAYOFWEEK(TO_TIMESTAMP_NTZ(scheduled_departure_time)) as departure_day_of_week,
+        load_timestamp as ingestion_timestamp
+    FROM {{ ref('stg_streaming_departures') }}
+    WHERE scheduled_departure_time IS NOT NULL
     {% if is_incremental() %}
-    WHERE ingestion_timestamp > (SELECT COALESCE(MAX(updated_at), '1900-01-01') FROM {{ this }})
+    AND load_timestamp > (SELECT COALESCE(MAX(updated_at), '1900-01-01') FROM {{ this }})
     {% endif %}
 ),
 
@@ -73,7 +79,7 @@ headway_calc AS (
         departure_hour,
         departure_time,
         LAG(departure_time) OVER (
-            PARTITION BY stop_global_id, route_global_id, direction_headsign
+            PARTITION BY stop_global_id, route_global_id
             ORDER BY departure_time
         ) AS prev_departure_time
     FROM departures

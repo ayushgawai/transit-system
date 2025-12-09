@@ -21,26 +21,27 @@
 
 WITH departures AS (
     SELECT 
-        route_global_id,
+        route_id as route_global_id,
         route_short_name,
-        departure_date,
+        DATE(TO_TIMESTAMP_NTZ(scheduled_departure_time)) as departure_date,
         COUNT(*) AS departure_count,
-        MAX(ingestion_timestamp) AS last_update
-    FROM {{ ref('stg_departures') }}
+        MAX(load_timestamp) AS last_update
+    FROM {{ ref('stg_streaming_departures') }}
+    WHERE scheduled_departure_time IS NOT NULL
     {% if is_incremental() %}
-    WHERE ingestion_timestamp > (SELECT COALESCE(MAX(updated_at), '1900-01-01') FROM {{ this }})
+    AND load_timestamp > (SELECT COALESCE(MAX(updated_at), '1900-01-01') FROM {{ this }})
     {% endif %}
-    GROUP BY route_global_id, route_short_name, departure_date
+    GROUP BY route_id, route_short_name, DATE(TO_TIMESTAMP_NTZ(scheduled_departure_time))
 ),
 
 routes AS (
     SELECT DISTINCT
-        route_global_id,
+        route_id as route_global_id,
         route_short_name,
-        min_fare,
-        max_fare,
-        fare_currency
-    FROM {{ ref('stg_routes') }}
+        2.50 as min_fare,  -- Default fare (GTFS doesn't have fare data)
+        2.50 as max_fare,
+        'USD' as fare_currency
+    FROM {{ ref('stg_gtfs_routes') }}
 ),
 
 reliability AS (
@@ -51,6 +52,7 @@ reliability AS (
         AVG(avg_delay_seconds) AS avg_delay_seconds,
         AVG(reliability_score) AS reliability_score
     FROM {{ ref('reliability_metrics') }}
+    WHERE route_global_id IS NOT NULL
     GROUP BY route_global_id, departure_date
 ),
 

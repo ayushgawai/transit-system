@@ -29,14 +29,15 @@ def init_streaming_landing_table_snowflake():
         raise ValueError("Only Snowflake is supported")
     
     sf_config = config.get_snowflake_config()
-    schema = sf_config.get('schema', 'ANALYTICS')
+    database = sf_config.get('database', 'USER_DB_HORNET')
+    schema = 'LANDING'
     
     with get_warehouse_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")
+        cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {database}.{schema}")
         
         cursor.execute(f"""
-            CREATE TABLE IF NOT EXISTS {schema}.LANDING_STREAMING_DEPARTURES (
+            CREATE TABLE IF NOT EXISTS {database}.{schema}.LANDING_STREAMING_DEPARTURES (
                 ID VARCHAR(255),
                 TIMESTAMP VARCHAR(100),
                 GLOBAL_STOP_ID VARCHAR(255),
@@ -93,7 +94,8 @@ def consume_and_load():
         return
     
     sf_config = config.get_snowflake_config()
-    schema = sf_config.get('schema', 'ANALYTICS')
+    database = sf_config.get('database', 'USER_DB_HORNET')
+    schema = 'LANDING'
     
     message_count = 0
     batch_size = 100
@@ -133,7 +135,7 @@ def consume_and_load():
                     
                     if len(batch_data) >= batch_size:
                         cursor.executemany(f"""
-                            INSERT INTO {schema}.LANDING_STREAMING_DEPARTURES
+                            INSERT INTO {database}.{schema}.LANDING_STREAMING_DEPARTURES
                             (ID, TIMESTAMP, GLOBAL_STOP_ID, STOP_NAME, GLOBAL_ROUTE_ID,
                              ROUTE_SHORT_NAME, ROUTE_LONG_NAME, AGENCY, CITY,
                              SCHEDULED_DEPARTURE_TIME, DEPARTURE_TIME, IS_REAL_TIME,
@@ -151,7 +153,7 @@ def consume_and_load():
             # Insert remaining batch
             if batch_data:
                 cursor.executemany(f"""
-                    INSERT INTO {schema}.LANDING_STREAMING_DEPARTURES
+                    INSERT INTO {database}.{schema}.LANDING_STREAMING_DEPARTURES
                     (ID, TIMESTAMP, GLOBAL_STOP_ID, STOP_NAME, GLOBAL_ROUTE_ID,
                      ROUTE_SHORT_NAME, ROUTE_LONG_NAME, AGENCY, CITY,
                      SCHEDULED_DEPARTURE_TIME, DEPARTURE_TIME, IS_REAL_TIME,

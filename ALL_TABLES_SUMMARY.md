@@ -1,0 +1,188 @@
+# Complete Table Summary for Tableau Developer
+
+**Database**: `USER_DB_HORNET`  
+**Total Tables**: 20 across 5 schemas  
+**Last Updated**: 2025-01-08
+
+---
+
+## Quick Reference
+
+### ⭐ Primary Tables for Dashboards:
+1. **`ANALYTICS.RELIABILITY_METRICS`** - Reliability dashboard
+2. **`ANALYTICS.ROUTE_PERFORMANCE`** - Route performance dashboard
+3. **`ANALYTICS.DECISION_SUPPORT`** - Decision support dashboard
+4. **`ML.DEMAND_FORECAST`** - Forecasting dashboard
+5. **`ML.DELAY_FORECAST`** - Delay prediction dashboard
+
+---
+
+## Complete Table List
+
+### LANDING Schema (6 tables)
+**Purpose**: Raw data from APIs/GTFS
+
+1. **`LANDING_GTFS_STOPS`**
+   - Columns: STOP_ID, STOP_NAME, STOP_LAT, STOP_LON, AGENCY, FEED_ID, LOADED_AT
+   - Use: Stop locations, map visualization
+
+2. **`LANDING_GTFS_ROUTES`**
+   - Columns: ROUTE_ID, ROUTE_SHORT_NAME, ROUTE_LONG_NAME, ROUTE_COLOR, AGENCY, FEED_ID, LOADED_AT
+   - Use: Route information
+
+3. **`LANDING_GTFS_TRIPS`**
+   - Columns: TRIP_ID, ROUTE_ID, SERVICE_ID, AGENCY, FEED_ID, LOADED_AT
+   - Use: Trip analysis
+
+4. **`LANDING_GTFS_STOP_TIMES`**
+   - Columns: TRIP_ID, STOP_ID, ARRIVAL_TIME, DEPARTURE_TIME, STOP_SEQUENCE, AGENCY, SERVICE_DATE, FEED_ID
+   - Use: Schedule analysis
+
+5. **`LANDING_STREAMING_DEPARTURES`**
+   - Columns: ID, GLOBAL_STOP_ID, STOP_NAME, GLOBAL_ROUTE_ID, ROUTE_SHORT_NAME, ROUTE_LONG_NAME, AGENCY, CITY, SCHEDULED_DEPARTURE_TIME, DEPARTURE_TIME, DELAY_SECONDS, IS_REAL_TIME, CONSUMED_AT
+   - Use: Real-time departure data
+
+6. **`GTFS_LOAD_HISTORY`**
+   - Columns: FEED_ID, AGENCY, LAST_LOAD_DATE, LAST_LOAD_TIMESTAMP, RECORDS_LOADED
+   - Use: ETL monitoring
+
+---
+
+### RAW Schema (5 tables)
+**Purpose**: Cleaned raw data (from dbt staging models)
+
+1. **`STG_GTFS_STOPS`**
+   - Source: `landing_to_raw` dbt model
+   - Columns: Same as LANDING_GTFS_STOPS but cleaned
+   - Use: Primary source for stop data
+
+2. **`STG_GTFS_ROUTES`**
+   - Source: `landing_to_raw` dbt model
+   - Columns: Same as LANDING_GTFS_ROUTES but cleaned
+   - Use: Primary source for route data
+
+3. **`STG_GTFS_TRIPS`**
+   - Source: `landing_to_raw` dbt model
+   - Columns: Same as LANDING_GTFS_TRIPS but cleaned
+   - Use: Trip analysis
+
+4. **`STG_GTFS_STOP_TIMES`**
+   - Source: `landing_to_raw` dbt model
+   - Columns: Same as LANDING_GTFS_STOP_TIMES but cleaned
+   - Use: Schedule analysis
+
+5. **`STG_STREAMING_DEPARTURES`**
+   - Source: `streaming_to_analytics` dbt model
+   - Columns: ID, STOP_ID, STOP_NAME, ROUTE_ID, ROUTE_SHORT_NAME, ROUTE_LONG_NAME, AGENCY, SCHEDULED_DEPARTURE_TIME, ACTUAL_DEPARTURE_TIME, DELAY_SECONDS, IS_REAL_TIME, LOAD_TIMESTAMP
+   - Use: Real-time performance metrics
+
+---
+
+### TRANSFORM Schema (1 table)
+**Purpose**: Intermediate transformations
+
+1. **`ROUTE_DEPARTURES`**
+   - Source: `transform` dbt model
+   - Columns: TRIP_ID, STOP_ID, ROUTE_ID, ROUTE_SHORT_NAME, ROUTE_LONG_NAME, AGENCY, STOP_NAME, STOP_LAT, STOP_LON, ARRIVAL_TIME, DEPARTURE_TIME, SERVICE_DATE
+   - Use: Route-level aggregations
+
+---
+
+### ANALYTICS Schema (6 tables)
+**Purpose**: Final analytics tables (ready for dashboards)
+
+1. **`RELIABILITY_METRICS`** ⭐
+   - Columns: ID, ROUTE_GLOBAL_ID, ROUTE_SHORT_NAME, DEPARTURE_DATE, DEPARTURE_HOUR, TOTAL_DEPARTURES, ON_TIME_DEPARTURES, ON_TIME_PCT, AVG_DELAY_SECONDS, RELIABILITY_SCORE, AVG_HEADWAY_MINUTES
+   - Use: **PRIMARY FOR RELIABILITY DASHBOARDS**
+
+2. **`DEMAND_METRICS`**
+   - Columns: ID, STOP_GLOBAL_ID, STOP_NAME, ROUTE_GLOBAL_ID, ROUTE_SHORT_NAME, AGENCY, DEPARTURE_DATE, TOTAL_DEPARTURES, AM_PEAK_DEPARTURES, PM_PEAK_DEPARTURES, DEMAND_INTENSITY_SCORE
+   - Use: Demand analysis, capacity planning
+
+3. **`CROWDING_METRICS`**
+   - Columns: ID, ROUTE_GLOBAL_ID, ROUTE_SHORT_NAME, DEPARTURE_DATE, DEPARTURE_HOUR, TOTAL_DEPARTURES, AVG_OCCUPANCY_RATIO, CROWDED_COUNT, CAPACITY_UTILIZATION_SCORE
+   - Use: Capacity analysis, crowding hotspots
+
+4. **`REVENUE_METRICS`**
+   - Columns: ID, ROUTE_GLOBAL_ID, ROUTE_SHORT_NAME, DEPARTURE_DATE, ESTIMATED_RIDERSHIP, ESTIMATED_REVENUE, REVENUE_LOSS_DELAYS, REVENUE_OPPORTUNITY
+   - Use: Revenue analysis, financial dashboards
+
+5. **`DECISION_SUPPORT`** ⭐
+   - Columns: ID, ROUTE_GLOBAL_ID, ROUTE_SHORT_NAME, ON_TIME_PCT, AVG_DELAY_MINUTES, RELIABILITY_SCORE, RECOMMENDATION_TYPE, PRIORITY_SCORE, RECOMMENDATION_DESCRIPTION, IMPACT_SCORE
+   - Use: **PRIMARY FOR DECISION SUPPORT DASHBOARDS**
+
+6. **`ROUTE_PERFORMANCE`** ⭐
+   - Columns: ROUTE_ID, AGENCY, ROUTE_SHORT_NAME, ROUTE_LONG_NAME, TOTAL_TRIPS, TOTAL_STOPS, TOTAL_DEPARTURES, STREAMING_DEPARTURES, AVG_DELAY_SECONDS, ON_TIME_PERFORMANCE, UPDATED_AT
+   - Use: **PRIMARY FOR ROUTE PERFORMANCE DASHBOARDS**
+
+---
+
+### ML Schema (2 tables)
+**Purpose**: ML models and forecasts
+
+1. **`DEMAND_FORECAST`** ⭐
+   - Columns: ROUTE_ID, ROUTE_SHORT_NAME, AGENCY, FORECAST_DATE, PREDICTED_DEPARTURES, FORECAST_GENERATED_AT
+   - Use: **PRIMARY FOR FORECASTING DASHBOARDS**
+   - Generated by: Snowflake ML FORECAST model
+
+2. **`DELAY_FORECAST`** ⭐
+   - Columns: ROUTE_ID, ROUTE_SHORT_NAME, AGENCY, FORECAST_DATE, PREDICTED_AVG_DELAY, PREDICTED_MEDIAN_DELAY, FORECAST_GENERATED_AT
+   - Use: **PRIMARY FOR DELAY PREDICTION DASHBOARDS**
+   - Generated by: Snowflake ML FORECAST model
+
+---
+
+## Tableau Connection String
+
+```
+Server: <your-snowflake-account>.snowflakecomputing.com
+Database: USER_DB_HORNET
+Schema: ANALYTICS (or RAW, ML, TRANSFORM, LANDING)
+Warehouse: <your-warehouse>
+Role: <your-role>
+```
+
+---
+
+## Recommended Dashboard Data Sources
+
+### 1. Reliability Dashboard
+- **Primary**: `ANALYTICS.RELIABILITY_METRICS`
+- **Secondary**: `ANALYTICS.ROUTE_PERFORMANCE`
+
+### 2. Route Performance Dashboard
+- **Primary**: `ANALYTICS.ROUTE_PERFORMANCE`
+- **Secondary**: `RAW.STG_STREAMING_DEPARTURES`
+
+### 3. Forecasting Dashboard
+- **Primary**: `ML.DEMAND_FORECAST`
+- **Secondary**: `ML.DELAY_FORECAST`
+
+### 4. Decision Support Dashboard
+- **Primary**: `ANALYTICS.DECISION_SUPPORT`
+- **Secondary**: `ANALYTICS.RELIABILITY_METRICS`, `ANALYTICS.REVENUE_METRICS`
+
+### 5. Map Visualization
+- **Primary**: `RAW.STG_GTFS_STOPS`
+- **Secondary**: `RAW.STG_STREAMING_DEPARTURES`
+
+### 6. Revenue Dashboard
+- **Primary**: `ANALYTICS.REVENUE_METRICS`
+- **Secondary**: `ANALYTICS.ROUTE_PERFORMANCE`
+
+---
+
+## Important Notes
+
+1. **AGENCY Column**: Available in most tables - use for filtering BART vs VTA
+2. **Timestamps**: All in UTC - convert to America/Los_Angeles in Tableau
+3. **DELAY_SECONDS**: Negative = early, Positive = late
+4. **ON_TIME_PCT**: 0-100 scale
+5. **RELIABILITY_SCORE**: 0-100 scale (higher = better)
+6. **Incremental Updates**: Analytics tables are incrementally updated
+7. **ML Forecasts**: Generated daily via Snowflake ML FORECAST
+
+---
+
+**For detailed column descriptions, see**: `TABLEAU_DASHBOARD_TABLES.md`
+

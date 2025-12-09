@@ -47,15 +47,16 @@ def init_landing_tables():
         raise ValueError("Only Snowflake is supported")
     
     sf_config = config.get_snowflake_config()
-    schema = sf_config.get('schema', 'ANALYTICS')
+    database = sf_config.get('database', 'USER_DB_HORNET')
+    schema = 'LANDING'  # Landing tables go in LANDING schema
     
     with get_warehouse_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")
+        cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {database}.{schema}")
         
         # GTFS Stops
         cursor.execute(f"""
-            CREATE TABLE IF NOT EXISTS {schema}.LANDING_GTFS_STOPS (
+            CREATE TABLE IF NOT EXISTS {database}.{schema}.LANDING_GTFS_STOPS (
                 STOP_ID VARCHAR(255),
                 STOP_CODE VARCHAR(100),
                 STOP_NAME VARCHAR(500),
@@ -75,7 +76,7 @@ def init_landing_tables():
         
         # GTFS Routes
         cursor.execute(f"""
-            CREATE TABLE IF NOT EXISTS {schema}.LANDING_GTFS_ROUTES (
+            CREATE TABLE IF NOT EXISTS {database}.{schema}.LANDING_GTFS_ROUTES (
                 ROUTE_ID VARCHAR(255),
                 AGENCY_ID VARCHAR(100),
                 ROUTE_SHORT_NAME VARCHAR(100),
@@ -94,7 +95,7 @@ def init_landing_tables():
         
         # GTFS Trips
         cursor.execute(f"""
-            CREATE TABLE IF NOT EXISTS {schema}.LANDING_GTFS_TRIPS (
+            CREATE TABLE IF NOT EXISTS {database}.{schema}.LANDING_GTFS_TRIPS (
                 TRIP_ID VARCHAR(255),
                 ROUTE_ID VARCHAR(255),
                 SERVICE_ID VARCHAR(255),
@@ -113,7 +114,7 @@ def init_landing_tables():
         
         # GTFS Stop Times
         cursor.execute(f"""
-            CREATE TABLE IF NOT EXISTS {schema}.LANDING_GTFS_STOP_TIMES (
+            CREATE TABLE IF NOT EXISTS {database}.{schema}.LANDING_GTFS_STOP_TIMES (
                 TRIP_ID VARCHAR(255),
                 ARRIVAL_TIME VARCHAR(50),
                 DEPARTURE_TIME VARCHAR(50),
@@ -134,7 +135,7 @@ def init_landing_tables():
         
         # Streaming Departures Landing Table
         cursor.execute(f"""
-            CREATE TABLE IF NOT EXISTS {schema}.LANDING_STREAMING_DEPARTURES (
+            CREATE TABLE IF NOT EXISTS {database}.{schema}.LANDING_STREAMING_DEPARTURES (
                 ID VARCHAR(255),
                 TIMESTAMP VARCHAR(100),
                 GLOBAL_STOP_ID VARCHAR(255),
@@ -156,7 +157,7 @@ def init_landing_tables():
         
         # Load history
         cursor.execute(f"""
-            CREATE TABLE IF NOT EXISTS {schema}.GTFS_LOAD_HISTORY (
+            CREATE TABLE IF NOT EXISTS {database}.{schema}.GTFS_LOAD_HISTORY (
                 FEED_ID VARCHAR(255) PRIMARY KEY,
                 AGENCY VARCHAR(100),
                 LAST_LOAD_DATE VARCHAR(50),
@@ -202,7 +203,7 @@ def has_agency_data(agency: str) -> bool:
             cursor = conn.cursor()
             # Check if we have any stops for this agency (quick check)
             cursor.execute(f"""
-                SELECT COUNT(*) FROM {schema}.LANDING_GTFS_STOPS
+                SELECT COUNT(*) FROM {database}.{schema}.LANDING_GTFS_STOPS
                 WHERE AGENCY = %s
             """, (agency,))
             count = cursor.fetchone()[0]
@@ -214,13 +215,14 @@ def get_last_load_date(feed_id: str) -> str:
     """Get last load date for a feed from Snowflake"""
     config = get_warehouse_config()
     sf_config = config.get_snowflake_config()
-    schema = sf_config.get('schema', 'ANALYTICS')
+    database = sf_config.get('database', 'USER_DB_HORNET')
+    schema = 'LANDING'
     
     try:
         with get_warehouse_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(f"""
-                SELECT LAST_LOAD_DATE FROM {schema}.GTFS_LOAD_HISTORY
+                SELECT LAST_LOAD_DATE FROM {database}.{schema}.GTFS_LOAD_HISTORY
                 WHERE FEED_ID = %s
             """, (feed_id,))
             
@@ -237,11 +239,32 @@ def load_gtfs_feed(agency: str, url: str):
     print(f"\n📥 Loading GTFS feed for {agency}...")
     
     # GTFS is static schedule data, not daily - check if we already have it
-    if has_agency_data(agency):
-        print(f"  ⏭️  Skipping: GTFS data for {agency} already exists (static schedule, not daily)")
-        print(f"  💡 GTFS schedules don't change daily. Use streaming data for real-time updates.")
-        return 0
+    # Check in both LANDING and RAW schemas to be thorough
+    config = get_warehouse_config()
+    sf_config = config.get_snowflake_config()
+    database = sf_config.get('database', 'USER_DB_HORNET')
     
+    with get_warehouse_connection() as conn:
+        cursor = conn.cursor()
+        # Check LANDING schema
+        cursor.execute(f"SELECT COUNT(*) FROM {database}.LANDING.LANDING_GTFS_STOPS WHERE AGENCY = %s", (agency,))
+        landing_count = cursor.fetchone()[0]
+        # Check RAW schema
+        try:
+            cursor.execute(f"SELECT COUNT(*) FROM {database}.RAW.STG_GTFS_STOPS WHERE AGENCY = %s", (agency,))
+            raw_count = cursor.fetchone()[0]
+        except:
+            raw_count = 0
+        
+        if landing_count > 0 or raw_count > 0:
+            print(f"  ⏭️  Skipping download: GTFS data for {agency} already exists")
+            print(f"     - LANDING schema: {landing_count} stops")
+            print(f"     - RAW schema: {raw_count} stops")
+            print(f"  💡 GTFS schedules are static - no need to re-download")
+            print(f"  ✅ Returning early - no download or processing needed")
+            return max(landing_count, raw_count)
+    
+    # Only proceed if no data exists
     feed_id = f"{agency}_{datetime.now().strftime('%Y%m%d')}"
     last_load_date = get_last_load_date(feed_id)
     initial_load_date = get_warehouse_config().get_initial_load_date()
@@ -272,7 +295,8 @@ def load_gtfs_feed(agency: str, url: str):
     # Load data to Snowflake using bulk inserts
     config = get_warehouse_config()
     sf_config = config.get_snowflake_config()
-    schema = sf_config.get('schema', 'ANALYTICS')
+    database = sf_config.get('database', 'USER_DB_HORNET')
+    schema = 'LANDING'
     
     records_loaded = 0
     service_date = datetime.now().strftime('%Y-%m-%d')
@@ -282,10 +306,10 @@ def load_gtfs_feed(agency: str, url: str):
         
         # Delete existing data for this feed (for clean reload)
         print("  🗑️  Clearing existing data for this feed...")
-        cursor.execute(f"DELETE FROM {schema}.LANDING_GTFS_STOPS WHERE FEED_ID = %s", (feed_id,))
-        cursor.execute(f"DELETE FROM {schema}.LANDING_GTFS_ROUTES WHERE FEED_ID = %s", (feed_id,))
-        cursor.execute(f"DELETE FROM {schema}.LANDING_GTFS_TRIPS WHERE FEED_ID = %s", (feed_id,))
-        cursor.execute(f"DELETE FROM {schema}.LANDING_GTFS_STOP_TIMES WHERE FEED_ID = %s", (feed_id,))
+        cursor.execute(f"DELETE FROM {database}.{schema}.LANDING_GTFS_STOPS WHERE FEED_ID = %s", (feed_id,))
+        cursor.execute(f"DELETE FROM {database}.{schema}.LANDING_GTFS_ROUTES WHERE FEED_ID = %s", (feed_id,))
+        cursor.execute(f"DELETE FROM {database}.{schema}.LANDING_GTFS_TRIPS WHERE FEED_ID = %s", (feed_id,))
+        cursor.execute(f"DELETE FROM {database}.{schema}.LANDING_GTFS_STOP_TIMES WHERE FEED_ID = %s", (feed_id,))
         
         # Bulk insert stops
         if stops:
@@ -314,7 +338,7 @@ def load_gtfs_feed(agency: str, url: str):
             ) for stop in stops]
             
             cursor.executemany(f"""
-                INSERT INTO {schema}.LANDING_GTFS_STOPS
+                INSERT INTO {database}.{schema}.LANDING_GTFS_STOPS
                 (STOP_ID, STOP_CODE, STOP_NAME, STOP_DESC, STOP_LAT, STOP_LON,
                  ZONE_ID, STOP_URL, LOCATION_TYPE, PARENT_STATION, AGENCY, FEED_ID)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -348,7 +372,7 @@ def load_gtfs_feed(agency: str, url: str):
             ) for route in routes]
             
             cursor.executemany(f"""
-                INSERT INTO {schema}.LANDING_GTFS_ROUTES
+                INSERT INTO {database}.{schema}.LANDING_GTFS_ROUTES
                 (ROUTE_ID, AGENCY_ID, ROUTE_SHORT_NAME, ROUTE_LONG_NAME, ROUTE_DESC,
                  ROUTE_TYPE, ROUTE_URL, ROUTE_COLOR, ROUTE_TEXT_COLOR, AGENCY, FEED_ID)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -382,7 +406,7 @@ def load_gtfs_feed(agency: str, url: str):
             ) for trip in trips]
             
             cursor.executemany(f"""
-                INSERT INTO {schema}.LANDING_GTFS_TRIPS
+                INSERT INTO {database}.{schema}.LANDING_GTFS_TRIPS
                 (TRIP_ID, ROUTE_ID, SERVICE_ID, TRIP_HEADSIGN, TRIP_SHORT_NAME,
                  DIRECTION_ID, BLOCK_ID, SHAPE_ID, WHEELCHAIR_ACCESSIBLE, AGENCY, FEED_ID)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -426,7 +450,7 @@ def load_gtfs_feed(agency: str, url: str):
                 ) for stop_time in batch]
                 
                 cursor.executemany(f"""
-                    INSERT INTO {schema}.LANDING_GTFS_STOP_TIMES
+                    INSERT INTO {database}.{schema}.LANDING_GTFS_STOP_TIMES
                     (TRIP_ID, ARRIVAL_TIME, DEPARTURE_TIME, STOP_ID, STOP_SEQUENCE,
                      STOP_HEADSIGN, PICKUP_TYPE, DROP_OFF_TYPE, SHAPE_DIST_TRAVELED,
                      TIMEPOINT, AGENCY, FEED_ID, SERVICE_DATE)
@@ -441,7 +465,7 @@ def load_gtfs_feed(agency: str, url: str):
         
         # Update load history
         cursor.execute(f"""
-            MERGE INTO {schema}.GTFS_LOAD_HISTORY AS target
+            MERGE INTO {database}.{schema}.GTFS_LOAD_HISTORY AS target
             USING (SELECT %s AS FEED_ID) AS source
             ON target.FEED_ID = source.FEED_ID
             WHEN MATCHED THEN

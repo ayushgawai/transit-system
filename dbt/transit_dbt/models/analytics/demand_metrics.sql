@@ -19,18 +19,23 @@
 
 WITH departures AS (
     SELECT 
-        stop_global_id,
+        stop_id as stop_global_id,
         stop_name,
-        route_global_id,
+        route_id as route_global_id,
         route_short_name,
-        departure_time,
-        departure_date,
-        departure_hour,
-        departure_day_of_week,
-        departure_day_name,
-        delay_status,
-        ingestion_timestamp
-    FROM {{ ref('stg_departures') }}
+        TO_TIMESTAMP_NTZ(actual_departure_time) as departure_time,
+        DATE(TO_TIMESTAMP_NTZ(scheduled_departure_time)) as departure_date,
+        HOUR(TO_TIMESTAMP_NTZ(scheduled_departure_time)) as departure_hour,
+        DAYOFWEEK(TO_TIMESTAMP_NTZ(scheduled_departure_time)) as departure_day_of_week,
+        DAYNAME(TO_TIMESTAMP_NTZ(scheduled_departure_time)) as departure_day_name,
+        CASE 
+            WHEN delay_seconds IS NULL THEN 'UNKNOWN'
+            WHEN delay_seconds <= 0 THEN 'ON_TIME'
+            WHEN delay_seconds <= 300 THEN 'LATE'
+            ELSE 'VERY_LATE'
+        END as delay_status,
+        load_timestamp as ingestion_timestamp
+    FROM {{ ref('stg_streaming_departures') }}
     {% if is_incremental() %}
     WHERE ingestion_timestamp > (SELECT COALESCE(MAX(updated_at), '1900-01-01') FROM {{ this }})
     {% endif %}
@@ -38,23 +43,23 @@ WITH departures AS (
 
 stops AS (
     SELECT DISTINCT 
-        stop_global_id, 
+        stop_id as stop_global_id, 
         stop_name, 
         stop_lat, 
         stop_lon,
-        route_type_name,
-        parent_station_name
-    FROM {{ ref('stg_stops') }}
+        CAST(location_type AS INTEGER) as location_type,
+        parent_station as parent_station_name
+    FROM {{ ref('stg_gtfs_stops') }}
 ),
 
 routes AS (
     SELECT DISTINCT 
-        route_global_id, 
+        route_id as route_global_id, 
         route_short_name,
         route_long_name,
         agency,
-        mode
-    FROM {{ ref('stg_routes') }}
+        CAST(route_type AS INTEGER) as route_type
+    FROM {{ ref('stg_gtfs_routes') }}
 ),
 
 -- Calculate departures by stop, route, date, and hour
@@ -119,7 +124,7 @@ SELECT
     dd.stop_name,
     s.stop_lat,
     s.stop_lon,
-    s.route_type_name,
+    s.location_type,
     s.parent_station_name,
     
     -- Route info
@@ -127,7 +132,7 @@ SELECT
     dd.route_short_name,
     r.route_long_name,
     r.agency,
-    r.mode,
+    r.route_type,
     
     -- Date info
     dd.departure_date,

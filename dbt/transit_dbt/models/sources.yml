@@ -4,7 +4,7 @@ sources:
   - name: landing
     description: Landing tables from GTFS and streaming data
     database: "{{ target.database }}"
-    schema: "{{ target.schema }}"
+    schema: "LANDING"
     tables:
       - name: landing_gtfs_stops
         description: GTFS stops from landing layer

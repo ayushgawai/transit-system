@@ -1,34 +1,49 @@
 -- Analytics model: Route Performance Metrics
 {{ config(
-    materialized='incremental',
-    unique_key='route_id||agency',
-    incremental_strategy='merge',
+    materialized='table',
     schema='ANALYTICS'
 ) }}
 
-WITH route_stats AS (
+WITH route_base AS (
+    SELECT DISTINCT
+        route_id,
+        agency,
+        route_short_name,
+        route_long_name
+    FROM {{ ref('stg_gtfs_routes') }}
+),
+route_departure_agg AS (
+    SELECT
+        route_id,
+        agency,
+        COUNT(DISTINCT trip_id) as total_trips,
+        COUNT(DISTINCT stop_id) as total_stops,
+        COUNT(*) as total_departures
+    FROM {{ ref('route_departures') }}
+    GROUP BY route_id, agency
+),
+route_stats AS (
     SELECT
         r.route_id,
         r.agency,
         r.route_short_name,
         r.route_long_name,
-        COUNT(DISTINCT rd.trip_id) as total_trips,
-        COUNT(DISTINCT rd.stop_id) as total_stops,
-        COUNT(*) as total_departures
-    FROM {{ ref('stg_gtfs_routes') }} r
-    LEFT JOIN {{ ref('route_departures') }} rd ON r.route_id = rd.route_id AND r.agency = rd.agency
-    GROUP BY r.route_id, r.agency, r.route_short_name, r.route_long_name
+        COALESCE(rd.total_trips, 0) as total_trips,
+        COALESCE(rd.total_stops, 0) as total_stops,
+        COALESCE(rd.total_departures, 0) as total_departures
+    FROM route_base r
+    LEFT JOIN route_departure_agg rd ON r.route_id = rd.route_id AND r.agency = rd.agency
 ),
 streaming_stats AS (
     SELECT
         route_id,
-        agency,
+        COALESCE(agency, 'UNKNOWN') as agency,
         COUNT(*) as streaming_departures,
         AVG(CASE WHEN delay_seconds > 0 THEN delay_seconds ELSE NULL END) as avg_delay_seconds,
         SUM(CASE WHEN delay_seconds BETWEEN -300 AND 300 THEN 1 ELSE 0 END) as on_time_count
     FROM {{ ref('stg_streaming_departures') }}
     WHERE is_real_time = true
-    GROUP BY route_id, agency
+    GROUP BY route_id, COALESCE(agency, 'UNKNOWN')
 )
 SELECT
     rs.route_id,
@@ -48,8 +63,4 @@ SELECT
     CURRENT_TIMESTAMP as updated_at
 FROM route_stats rs
 LEFT JOIN streaming_stats ss ON rs.route_id = ss.route_id AND rs.agency = ss.agency
-
-{% if is_incremental() %}
-    WHERE updated_at > (SELECT MAX(updated_at) FROM {{ this }})
-{% endif %}
-
+WHERE rs.agency IS NOT NULL

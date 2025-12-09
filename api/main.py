@@ -143,9 +143,9 @@ async def get_kpis(agency: Optional[str] = None):
                         COUNT(DISTINCT r.ROUTE_ID) as active_routes,
                         COUNT(*) as total_departures,
                         0.0 as avg_delay
-                    FROM {database}.ANALYTICS.STG_GTFS_ROUTES r
-                    INNER JOIN {database}.ANALYTICS.STG_GTFS_TRIPS t ON r.ROUTE_ID = t.ROUTE_ID
-                    INNER JOIN {database}.ANALYTICS.STG_GTFS_STOP_TIMES st ON t.TRIP_ID = st.TRIP_ID
+                    FROM {database}.ANALYTICS_RAW.STG_GTFS_ROUTES r
+                    INNER JOIN {database}.ANALYTICS_RAW.STG_GTFS_TRIPS t ON r.ROUTE_ID = t.ROUTE_ID
+                    INNER JOIN {database}.ANALYTICS_RAW.STG_GTFS_STOP_TIMES st ON t.TRIP_ID = st.TRIP_ID
                     WHERE 1=1 {agency_filter}
                 """
                 cursor.execute(reliability_query)
@@ -190,7 +190,7 @@ async def get_routes(agency: Optional[str] = None):
                         90.0 as RELIABILITY_SCORE,
                         0.0 as UTILIZATION,
                         0.0 as REVENUE
-                    FROM {database}.ANALYTICS.STG_GTFS_ROUTES r
+                    FROM {database}.ANALYTICS_RAW.STG_GTFS_ROUTES r
                     WHERE 1=1 {agency_filter}
                 """
                 cursor.execute(query)
@@ -208,8 +208,8 @@ async def get_routes(agency: Optional[str] = None):
                     # Calculate actual utilization from stop_times
                     utilization_query = f"""
                         SELECT COUNT(DISTINCT st.STOP_ID) as stop_count
-                        FROM {database}.ANALYTICS.STG_GTFS_STOP_TIMES st
-                        INNER JOIN {database}.ANALYTICS.STG_GTFS_TRIPS t ON st.TRIP_ID = t.TRIP_ID
+                    FROM {database}.ANALYTICS_RAW.STG_GTFS_STOP_TIMES st
+                    INNER JOIN {database}.ANALYTICS_RAW.STG_GTFS_TRIPS t ON st.TRIP_ID = t.TRIP_ID
                         WHERE t.ROUTE_ID = %s
                     """
                     cursor.execute(utilization_query, (route_id,))
@@ -219,15 +219,15 @@ async def get_routes(agency: Optional[str] = None):
                     # Calculate estimated revenue (departures * avg fare)
                     revenue_query = f"""
                         SELECT COUNT(*) as departure_count
-                        FROM {database}.ANALYTICS.STG_GTFS_STOP_TIMES st
-                        INNER JOIN {database}.ANALYTICS.STG_GTFS_TRIPS t ON st.TRIP_ID = t.TRIP_ID
+                    FROM {database}.ANALYTICS_RAW.STG_GTFS_STOP_TIMES st
+                    INNER JOIN {database}.ANALYTICS_RAW.STG_GTFS_TRIPS t ON st.TRIP_ID = t.TRIP_ID
                         WHERE t.ROUTE_ID = %s
                     """
                     cursor.execute(revenue_query, (route_id,))
                     rev_row = cursor.fetchone()
                     departure_count = rev_row[0] if rev_row and rev_row[0] else 0
-                    # Estimate: 25 passengers per departure * $2.50 avg fare
-                    revenue = departure_count * 25 * 2.50
+                    # Estimate: 20 passengers per departure * $2.50 avg fare (more conservative)
+                    revenue = departure_count * 20 * 2.50
                     
                     formatted_routes.append({
                         "id": route_id,
@@ -271,7 +271,7 @@ async def get_route_health(agency: Optional[str] = None):
                     COUNT(st.STOP_ID) as TOTAL_DEPARTURES,
                     COUNT(DISTINCT st.STOP_ID) as UNIQUE_STOPS,
                     COUNT(DISTINCT t.TRIP_ID) as TRIP_COUNT
-                FROM {database}.ANALYTICS.STG_GTFS_ROUTES r
+                FROM {database}.ANALYTICS_RAW.STG_GTFS_ROUTES r
                 INNER JOIN {database}.ANALYTICS.STG_GTFS_TRIPS t ON r.ROUTE_ID = t.ROUTE_ID
                 INNER JOIN {database}.ANALYTICS.STG_GTFS_STOP_TIMES st ON t.TRIP_ID = st.TRIP_ID
                 WHERE 1=1 {agency_filter}
@@ -301,7 +301,7 @@ async def get_route_health(agency: Optional[str] = None):
                     COUNT(*) as total,
                     COUNT(CASE WHEN DELAY_SECONDS > 0 THEN 1 END) as delayed,
                     AVG(CASE WHEN DELAY_SECONDS > 0 THEN DELAY_SECONDS END) as avg_delay_sec
-                FROM {database}.ANALYTICS.LANDING_STREAMING_DEPARTURES
+                FROM {database}.LANDING.LANDING_STREAMING_DEPARTURES
                 WHERE DELAY_SECONDS IS NOT NULL {agency_filter.replace('r.AGENCY', 'AGENCY')}
                 GROUP BY ROUTE_SHORT_NAME, ROUTE_LONG_NAME, AGENCY
             """
@@ -378,7 +378,7 @@ async def get_route_comparison(agency: Optional[str] = None):
                     COUNT(st.STOP_ID) as TOTAL_DEPARTURES,
                     COUNT(DISTINCT st.STOP_ID) as UNIQUE_STOPS,
                     COUNT(DISTINCT t.TRIP_ID) as TRIP_COUNT
-                FROM {database}.ANALYTICS.STG_GTFS_ROUTES r
+                FROM {database}.ANALYTICS_RAW.STG_GTFS_ROUTES r
                 INNER JOIN {database}.ANALYTICS.STG_GTFS_TRIPS t ON r.ROUTE_ID = t.ROUTE_ID
                 INNER JOIN {database}.ANALYTICS.STG_GTFS_STOP_TIMES st ON t.TRIP_ID = st.TRIP_ID
                 WHERE 1=1 {agency_filter}
@@ -433,7 +433,7 @@ async def get_delay_analysis(agency: Optional[str] = None):
                     COUNT(CASE WHEN DELAY_SECONDS <= 0 THEN 1 END) as on_time_count,
                     AVG(CASE WHEN DELAY_SECONDS > 0 THEN DELAY_SECONDS END) as avg_delay_seconds,
                     MAX(DELAY_SECONDS) as max_delay_seconds
-                FROM {database}.ANALYTICS.LANDING_STREAMING_DEPARTURES
+                FROM {database}.LANDING.LANDING_STREAMING_DEPARTURES
                 WHERE DELAY_SECONDS IS NOT NULL {agency_filter}
                 GROUP BY ROUTE_SHORT_NAME, ROUTE_LONG_NAME, AGENCY
                 HAVING COUNT(*) > 5
@@ -489,7 +489,7 @@ async def get_utilization_distribution(agency: Optional[str] = None):
                     r.AGENCY,
                     COUNT(DISTINCT st.STOP_ID) as stop_count,
                     COUNT(st.STOP_ID) as departure_count
-                FROM {database}.ANALYTICS.STG_GTFS_ROUTES r
+                FROM {database}.ANALYTICS_RAW.STG_GTFS_ROUTES r
                 INNER JOIN {database}.ANALYTICS.STG_GTFS_TRIPS t ON r.ROUTE_ID = t.ROUTE_ID
                 INNER JOIN {database}.ANALYTICS.STG_GTFS_STOP_TIMES st ON t.TRIP_ID = st.TRIP_ID
                 WHERE 1=1 {agency_filter}
@@ -523,6 +523,57 @@ async def get_utilization_distribution(agency: Optional[str] = None):
     except Exception as e:
         return ApiResponse(success=False, data=[], error=str(e))
 
+@app.get("/api/hourly-demand")
+async def get_hourly_demand(agency: Optional[str] = None):
+    """Get hourly departure demand data"""
+    try:
+        with get_snowflake_connection() as conn:
+            cursor = conn.cursor()
+            config = get_warehouse_config()
+            snowflake_config = config.get_snowflake_config()
+            database = snowflake_config.get('database', 'USER_DB_HORNET')
+            agency_filter = f"AND r.AGENCY = '{agency}'" if agency and agency != "All" else ""
+            
+            # Get hourly departure counts from stop_times
+            # DEPARTURE_TIME is VARCHAR, convert to TIME then extract HOUR
+            query = f"""
+                SELECT 
+                    HOUR(TO_TIME(st.DEPARTURE_TIME)) as HOUR,
+                    COUNT(*) as DEPARTURE_COUNT,
+                    COUNT(DISTINCT r.ROUTE_ID) as ROUTE_COUNT
+                    FROM {database}.ANALYTICS_RAW.STG_GTFS_STOP_TIMES st
+                    INNER JOIN {database}.ANALYTICS_RAW.STG_GTFS_TRIPS t ON st.TRIP_ID = t.TRIP_ID
+                INNER JOIN {database}.ANALYTICS_RAW.STG_GTFS_ROUTES r ON t.ROUTE_ID = r.ROUTE_ID
+                WHERE st.DEPARTURE_TIME IS NOT NULL 
+                AND TRY_TO_TIME(st.DEPARTURE_TIME) IS NOT NULL {agency_filter}
+                GROUP BY HOUR(TO_TIME(st.DEPARTURE_TIME))
+                ORDER BY HOUR
+            """
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            
+            hourly_data = []
+            for row in rows:
+                hour = int(row[0]) if row[0] is not None else 0
+                count = int(row[1]) if row[1] else 0
+                routes = int(row[2]) if row[2] else 0
+                
+                hourly_data.append({
+                    "hour": hour,
+                    "departures": count,
+                    "routes": routes,
+                    "label": f"{hour:02d}:00"
+                })
+            
+            # Fill in missing hours with 0
+            all_hours = {h: {"hour": h, "departures": 0, "routes": 0, "label": f"{h:02d}:00"} for h in range(24)}
+            for data in hourly_data:
+                all_hours[data["hour"]] = data
+            
+            return ApiResponse(success=True, data=list(all_hours.values()))
+    except Exception as e:
+        return ApiResponse(success=False, data=[], error=f"Snowflake query failed: {str(e)}")
+
 @app.get("/api/agencies")
 async def get_agencies():
     """Get list of available agencies"""
@@ -534,7 +585,7 @@ async def get_agencies():
             cursor = conn.cursor()
             query = f"""
                 SELECT DISTINCT AGENCY
-                FROM {database}.ANALYTICS.STG_GTFS_ROUTES
+                FROM {database}.ANALYTICS_RAW.STG_GTFS_ROUTES
                 WHERE AGENCY IS NOT NULL
                 ORDER BY AGENCY
             """
@@ -557,7 +608,7 @@ async def get_cities():
             # GTFS stops don't have city, use agency as city identifier
             query = f"""
                 SELECT DISTINCT AGENCY
-                FROM {database}.ANALYTICS.STG_GTFS_ROUTES
+                FROM {database}.ANALYTICS_RAW.STG_GTFS_ROUTES
                 WHERE AGENCY IS NOT NULL
                 ORDER BY AGENCY
             """
@@ -591,10 +642,10 @@ async def get_stops(agency: Optional[str] = None, limit: int = 100):
                     0.0 as AVG_DELAY,  -- GTFS doesn't have delay data
                     COUNT(*) as ON_TIME_COUNT,  -- All are considered on-time in GTFS
                     COUNT(*) as TOTAL_WITH_DELAY
-                FROM {database}.ANALYTICS.STG_GTFS_STOPS s
-                INNER JOIN {database}.ANALYTICS.STG_GTFS_STOP_TIMES st ON s.STOP_ID = st.STOP_ID
-                INNER JOIN {database}.ANALYTICS.STG_GTFS_TRIPS t ON st.TRIP_ID = t.TRIP_ID
-                INNER JOIN {database}.ANALYTICS.STG_GTFS_ROUTES r ON t.ROUTE_ID = r.ROUTE_ID
+                FROM {database}.ANALYTICS_RAW.STG_GTFS_STOPS s
+                INNER JOIN {database}.ANALYTICS_RAW.STG_GTFS_STOP_TIMES st ON s.STOP_ID = st.STOP_ID
+                INNER JOIN {database}.ANALYTICS_RAW.STG_GTFS_TRIPS t ON st.TRIP_ID = t.TRIP_ID
+                INNER JOIN {database}.ANALYTICS_RAW.STG_GTFS_ROUTES r ON t.ROUTE_ID = r.ROUTE_ID
                 WHERE 1=1 {agency_filter}
                 GROUP BY s.STOP_ID, s.STOP_NAME, s.STOP_LAT, s.STOP_LON, r.AGENCY
                 LIMIT {limit}
@@ -664,7 +715,7 @@ async def get_live_data(agency: Optional[str] = None):
                     d.STOP_NAME,
                     d.ROUTE_SHORT_NAME,
                     d.ROUTE_LONG_NAME
-                FROM {database}.ANALYTICS.LANDING_STREAMING_DEPARTURES d
+                FROM {database}.LANDING.LANDING_STREAMING_DEPARTURES d
                 WHERE (d.CONSUMED_AT >= %s OR (d.TIMESTAMP IS NOT NULL AND TO_TIMESTAMP_NTZ(d.TIMESTAMP) >= %s))
                 {agency_filter}
                 ORDER BY COALESCE(d.CONSUMED_AT, TO_TIMESTAMP_NTZ(d.TIMESTAMP)) DESC NULLS LAST
@@ -729,25 +780,30 @@ async def get_live_data(agency: Optional[str] = None):
                     "data_age_seconds": data_age
                 })
             
-            # Calculate stats
+            # Calculate stats - only count departures with delay data for delay metrics
             streaming_count = len(departures)  # All are from streaming
-            realtime_count = len(departures)  # All are real-time
+            realtime_count = sum(1 for d in departures if d.get("is_realtime", False))
+            realtime_pct = (realtime_count / len(departures) * 100) if departures else 0
+            
             # Only consider delays that are not None
-            delays = [d["delay_seconds"] for d in departures if d["delay_seconds"] is not None]
+            delays = [d["delay_seconds"] for d in departures if d.get("delay_seconds") is not None]
             avg_delay = sum(delays) / len(delays) if delays else 0
-            on_time_count = sum(1 for d in departures if d["delay_seconds"] is not None and -300 <= d["delay_seconds"] <= 300)
+            on_time_count = sum(1 for d in departures if d.get("delay_seconds") is not None and -300 <= d.get("delay_seconds", 0) <= 300)
+            on_time_pct = (on_time_count / len(delays) * 100) if delays else 0
             
             latest_update = max([d["load_timestamp"] for d in departures]) if departures else None
             # Get minimum data age (most recent data)
-            data_ages = [d["data_age_seconds"] for d in departures if d["data_age_seconds"] >= 0]
+            data_ages = [d["data_age_seconds"] for d in departures if d.get("data_age_seconds", 0) >= 0]
             freshness_seconds = min(data_ages) if data_ages else 0
             
             stats = {
                 "total_today": len(departures),
                 "streaming_count": streaming_count,
                 "realtime_count": realtime_count,
-                "avg_delay": avg_delay,
+                "realtime_pct": round(realtime_pct, 1),
+                "avg_delay": round(avg_delay, 1),  # Round to 1 decimal
                 "on_time_count": on_time_count,
+                "on_time_pct": round(on_time_pct, 1),
                 "latest_update": latest_update,
                 "freshness_seconds": freshness_seconds
             }
@@ -795,41 +851,49 @@ async def get_admin_status():
                     from datetime import datetime, timedelta
                     
                     # Get counts from Snowflake - use ANALYTICS schema (actual location)
-                    cursor.execute(f"SELECT COUNT(*) FROM {database}.ANALYTICS.STG_GTFS_STOPS")
+                    cursor.execute(f"SELECT COUNT(*) FROM {database}.ANALYTICS_RAW.STG_GTFS_STOPS")
                     stops_count = cursor.fetchone()[0]
                     
-                    cursor.execute(f"SELECT COUNT(*) FROM {database}.ANALYTICS.STG_GTFS_ROUTES")
+                    cursor.execute(f"SELECT COUNT(*) FROM {database}.ANALYTICS_RAW.STG_GTFS_ROUTES")
                     routes_count = cursor.fetchone()[0]
                     
-                    cursor.execute(f"SELECT COUNT(*) FROM {database}.ANALYTICS.STG_GTFS_STOP_TIMES")
+                    cursor.execute(f"SELECT COUNT(*) FROM {database}.ANALYTICS_RAW.STG_GTFS_STOP_TIMES")
                     departures_count = cursor.fetchone()[0]
                     
                     # Get agencies from Snowflake - check AGENCY column in routes
-                    cursor.execute(f"SELECT DISTINCT AGENCY FROM {database}.ANALYTICS.STG_GTFS_ROUTES WHERE AGENCY IS NOT NULL ORDER BY AGENCY")
+                    cursor.execute(f"SELECT DISTINCT AGENCY FROM {database}.ANALYTICS_RAW.STG_GTFS_ROUTES WHERE AGENCY IS NOT NULL ORDER BY AGENCY")
                     agencies = [row[0] for row in cursor.fetchall()]
                     
                     # Get counts and samples per agency from Snowflake
                     agency_data = {}
                     for agency_name in agencies:
                         # Counts per agency - routes have AGENCY column
-                        cursor.execute(f"SELECT COUNT(*) FROM {database}.ANALYTICS.STG_GTFS_ROUTES WHERE AGENCY = %s", (agency_name,))
+                        cursor.execute(f"SELECT COUNT(*) FROM {database}.ANALYTICS_RAW.STG_GTFS_ROUTES WHERE AGENCY = %s", (agency_name,))
                         agency_routes_count = cursor.fetchone()[0]
                         
-                        # Stops don't have agency directly, but we can count routes
-                        agency_stops_count = 0  # Will calculate from routes
+                        # Count stops for this agency (via routes)
+                        cursor.execute(f"""
+                            SELECT COUNT(DISTINCT s.STOP_ID)
+                            FROM {database}.ANALYTICS_RAW.STG_GTFS_STOPS s
+                            INNER JOIN {database}.ANALYTICS_RAW.STG_GTFS_STOP_TIMES st ON s.STOP_ID = st.STOP_ID
+                            INNER JOIN {database}.ANALYTICS_RAW.STG_GTFS_TRIPS t ON st.TRIP_ID = t.TRIP_ID
+                            INNER JOIN {database}.ANALYTICS_RAW.STG_GTFS_ROUTES r ON t.ROUTE_ID = r.ROUTE_ID
+                            WHERE r.AGENCY = %s
+                        """, (agency_name,))
+                        agency_stops_count = cursor.fetchone()[0] or 0
                         
                         # Stop times count (departures)
                         cursor.execute(f"""
                             SELECT COUNT(*) 
-                            FROM {database}.ANALYTICS.STG_GTFS_STOP_TIMES st
-                            INNER JOIN {database}.ANALYTICS.STG_GTFS_TRIPS t ON st.TRIP_ID = t.TRIP_ID
-                            INNER JOIN {database}.ANALYTICS.STG_GTFS_ROUTES r ON t.ROUTE_ID = r.ROUTE_ID
+                            FROM {database}.ANALYTICS_RAW.STG_GTFS_STOP_TIMES st
+                            INNER JOIN {database}.ANALYTICS_RAW.STG_GTFS_TRIPS t ON st.TRIP_ID = t.TRIP_ID
+                            INNER JOIN {database}.ANALYTICS_RAW.STG_GTFS_ROUTES r ON t.ROUTE_ID = r.ROUTE_ID
                             WHERE r.AGENCY = %s
                         """, (agency_name,))
                         agency_departures_count = cursor.fetchone()[0]
                         
                         # Samples per agency (ordered by first available timestamp DESC)
-                        cursor.execute(f"SELECT * FROM {database}.ANALYTICS.STG_GTFS_ROUTES WHERE AGENCY = %s LIMIT 5", (agency_name,))
+                        cursor.execute(f"SELECT * FROM {database}.ANALYTICS_RAW.STG_GTFS_ROUTES WHERE AGENCY = %s LIMIT 5", (agency_name,))
                         agency_routes_rows = cursor.fetchall()
                         columns = [desc[0] for desc in cursor.description]
                         agency_routes_samples = [dict(zip(columns, row)) for row in agency_routes_rows]
@@ -837,10 +901,10 @@ async def get_admin_status():
                         # Get stops for this agency (via routes)
                         cursor.execute(f"""
                             SELECT DISTINCT s.*
-                            FROM {database}.ANALYTICS.STG_GTFS_STOPS s
-                            INNER JOIN {database}.ANALYTICS.STG_GTFS_STOP_TIMES st ON s.STOP_ID = st.STOP_ID
-                            INNER JOIN {database}.ANALYTICS.STG_GTFS_TRIPS t ON st.TRIP_ID = t.TRIP_ID
-                            INNER JOIN {database}.ANALYTICS.STG_GTFS_ROUTES r ON t.ROUTE_ID = r.ROUTE_ID
+                            FROM {database}.ANALYTICS_RAW.STG_GTFS_STOPS s
+                            INNER JOIN {database}.ANALYTICS_RAW.STG_GTFS_STOP_TIMES st ON s.STOP_ID = st.STOP_ID
+                            INNER JOIN {database}.ANALYTICS_RAW.STG_GTFS_TRIPS t ON st.TRIP_ID = t.TRIP_ID
+                            INNER JOIN {database}.ANALYTICS_RAW.STG_GTFS_ROUTES r ON t.ROUTE_ID = r.ROUTE_ID
                             WHERE r.AGENCY = %s
                             LIMIT 5
                         """, (agency_name,))
@@ -851,9 +915,9 @@ async def get_admin_status():
                         # Get stop times samples
                         cursor.execute(f"""
                             SELECT st.*
-                            FROM {database}.ANALYTICS.STG_GTFS_STOP_TIMES st
-                            INNER JOIN {database}.ANALYTICS.STG_GTFS_TRIPS t ON st.TRIP_ID = t.TRIP_ID
-                            INNER JOIN {database}.ANALYTICS.STG_GTFS_ROUTES r ON t.ROUTE_ID = r.ROUTE_ID
+                    FROM {database}.ANALYTICS_RAW.STG_GTFS_STOP_TIMES st
+                            INNER JOIN {database}.ANALYTICS_RAW.STG_GTFS_TRIPS t ON st.TRIP_ID = t.TRIP_ID
+                            INNER JOIN {database}.ANALYTICS_RAW.STG_GTFS_ROUTES r ON t.ROUTE_ID = r.ROUTE_ID
                             WHERE r.AGENCY = %s
                             LIMIT 5
                         """, (agency_name,))
@@ -875,17 +939,17 @@ async def get_admin_status():
                         }
                     
                     # Get overall sample data (limit 10 for each table)
-                    cursor.execute(f"SELECT * FROM {database}.ANALYTICS.STG_GTFS_STOPS LIMIT 10")
+                    cursor.execute(f"SELECT * FROM {database}.ANALYTICS_RAW.STG_GTFS_STOPS LIMIT 10")
                     stops_rows = cursor.fetchall()
                     columns = [desc[0] for desc in cursor.description]
                     stops_samples = [dict(zip(columns, row)) for row in stops_rows]
                     
-                    cursor.execute(f"SELECT * FROM {database}.ANALYTICS.STG_GTFS_ROUTES LIMIT 10")
+                    cursor.execute(f"SELECT * FROM {database}.ANALYTICS_RAW.STG_GTFS_ROUTES LIMIT 10")
                     routes_rows = cursor.fetchall()
                     columns = [desc[0] for desc in cursor.description]
                     routes_samples = [dict(zip(columns, row)) for row in routes_rows]
                     
-                    cursor.execute(f"SELECT * FROM {database}.ANALYTICS.STG_GTFS_STOP_TIMES LIMIT 10")
+                    cursor.execute(f"SELECT * FROM {database}.ANALYTICS_RAW.STG_GTFS_STOP_TIMES LIMIT 10")
                     departures_rows = cursor.fetchall()
                     columns = [desc[0] for desc in cursor.description]
                     departures_samples = [dict(zip(columns, row)) for row in departures_rows]
@@ -903,16 +967,16 @@ async def get_admin_status():
                         # Check CONSUMED_AT or TIMESTAMP column
                         cursor.execute(f"""
                             SELECT COUNT(*) 
-                            FROM {database}.ANALYTICS.LANDING_STREAMING_DEPARTURES 
+                            FROM {database}.LANDING.LANDING_STREAMING_DEPARTURES 
                             WHERE CONSUMED_AT >= %s OR TIMESTAMP >= %s
                         """, (one_hour_ago, one_hour_ago.isoformat()))
                         streaming_count = cursor.fetchone()[0]
-                        cursor.execute(f"SELECT COUNT(*) FROM {database}.ANALYTICS.LANDING_STREAMING_DEPARTURES")
+                        cursor.execute(f"SELECT COUNT(*) FROM {database}.LANDING.LANDING_STREAMING_DEPARTURES")
                         streaming_table_count = cursor.fetchone()[0]
                     except Exception as e:
                         # Try alternative column names
                         try:
-                            cursor.execute(f"SELECT COUNT(*) FROM {database}.ANALYTICS.LANDING_STREAMING_DEPARTURES")
+                            cursor.execute(f"SELECT COUNT(*) FROM {database}.LANDING.LANDING_STREAMING_DEPARTURES")
                             streaming_table_count = cursor.fetchone()[0]
                             # If table exists but no recent data, count is 0
                             streaming_count = 0
@@ -986,7 +1050,7 @@ async def get_admin_status():
                     cursor = conn.cursor()
                     cursor.execute(f"""
                         SELECT MAX(COALESCE(CONSUMED_AT, CURRENT_TIMESTAMP())) 
-                        FROM {database}.ANALYTICS.LANDING_STREAMING_DEPARTURES 
+                        FROM {database}.LANDING.LANDING_STREAMING_DEPARTURES 
                         WHERE CONSUMED_AT IS NOT NULL OR TIMESTAMP IS NOT NULL
                     """)
                     last_refresh = cursor.fetchone()[0]
@@ -1159,20 +1223,167 @@ async def get_alerts():
 async def get_demand_forecast(hours: int = 6, agency: Optional[str] = None):
     """Get demand forecast for next N hours"""
     try:
-        # Try Snowflake first
+        # Try Snowflake ML first
         try:
             with get_snowflake_connection() as conn:
                 cursor = conn.cursor()
-                # Snowflake ML forecast query would go here
-                # For now, fall through to local fallback
-                raise Exception("Snowflake ML not available - using fallback")
-        except Exception:
-            # Fallback to local database forecast
-            from .ml_forecast_fallback import generate_demand_forecast
-            forecasts = generate_demand_forecast(agency=agency, hours=hours)
-            return ApiResponse(success=True, data=forecasts)
+                config = get_warehouse_config()
+                snowflake_config = config.get_snowflake_config()
+                database = snowflake_config.get('database', 'USER_DB_HORNET')
+                
+                agency_filter = f"AND AGENCY = '{agency}'" if agency and agency != "All" else ""
+                query = f"""
+                    SELECT 
+                        ROUTE_ID,
+                        ROUTE_SHORT_NAME,
+                        AGENCY,
+                        FORECAST_DATE,
+                        PREDICTED_DEPARTURES,
+                        FORECAST_GENERATED_AT
+                    FROM {database}.ANALYTICS_ML.DEMAND_FORECAST
+                    WHERE FORECAST_DATE >= CURRENT_DATE()
+                        AND FORECAST_DATE <= DATEADD(day, {hours // 24 + 1}, CURRENT_DATE())
+                        {agency_filter}
+                    ORDER BY FORECAST_DATE, ROUTE_SHORT_NAME
+                """
+                cursor.execute(query)
+                rows = cursor.fetchall()
+                
+                if rows:
+                    forecasts = []
+                    for row in rows:
+                        forecasts.append({
+                            "route_id": row[0],
+                            "route_short_name": row[1],
+                            "agency": row[2],
+                            "forecast_date": str(row[3]),
+                            "predicted_departures": int(row[4]) if row[4] else 0,
+                            "generated_at": str(row[5]) if row[5] else None
+                        })
+                    return ApiResponse(success=True, data=forecasts)
+                else:
+                    raise Exception("No forecast data in ML table")
+        except Exception as e:
+            print(f"Snowflake ML forecast not available: {e}")
+            # Return empty if ML table is not available
+            return ApiResponse(success=False, data=[], error=f"ML forecast not available: {str(e)}")
     except Exception as e:
         return ApiResponse(success=False, data=[], error=str(e))
+
+@app.get("/api/forecasts/delay")
+async def get_delay_forecast(hours: int = 6, agency: Optional[str] = None):
+    """Get delay forecast for next N hours"""
+    try:
+        # Try Snowflake ML first
+        try:
+            with get_snowflake_connection() as conn:
+                cursor = conn.cursor()
+                config = get_warehouse_config()
+                snowflake_config = config.get_snowflake_config()
+                database = snowflake_config.get('database', 'USER_DB_HORNET')
+                
+                agency_filter = f"AND AGENCY = '{agency}'" if agency and agency != "All" else ""
+                query = f"""
+                    SELECT 
+                        ROUTE_ID,
+                        ROUTE_SHORT_NAME,
+                        AGENCY,
+                        FORECAST_DATE,
+                        PREDICTED_AVG_DELAY,
+                        PREDICTED_MEDIAN_DELAY,
+                        FORECAST_GENERATED_AT
+                    FROM {database}.ANALYTICS_ML.DELAY_FORECAST
+                    WHERE FORECAST_DATE >= CURRENT_DATE()
+                        AND FORECAST_DATE <= DATEADD(day, {hours // 24 + 1}, CURRENT_DATE())
+                        {agency_filter}
+                    ORDER BY FORECAST_DATE, ROUTE_SHORT_NAME
+                """
+                cursor.execute(query)
+                rows = cursor.fetchall()
+                
+                if rows:
+                    forecasts = []
+                    for row in rows:
+                        forecasts.append({
+                            "route_id": row[0],
+                            "route_short_name": row[1],
+                            "agency": row[2],
+                            "forecast_date": str(row[3]),
+                            "predicted_avg_delay": float(row[4]) if row[4] else 0,
+                            "predicted_median_delay": float(row[5]) if row[5] else 0,
+                            "generated_at": str(row[6]) if row[6] else None
+                        })
+                    return ApiResponse(success=True, data=forecasts)
+                else:
+                    raise Exception("No forecast data in ML table")
+        except Exception as e:
+            print(f"Snowflake ML delay forecast not available: {e}")
+            # Fallback: get current route health data
+            try:
+                route_health = await get_route_health(agency=agency)
+                if route_health.success and route_health.data:
+                    # Use current data as "forecast"
+                    forecasts = []
+                    for route in route_health.data[:10]:  # Limit to top 10
+                        forecasts.append({
+                            "route_id": route.get("route_id"),
+                            "route_short_name": route.get("route_short_name"),
+                            "agency": route.get("agency"),
+                            "forecast_date": str(datetime.now().date()),
+                            "predicted_avg_delay": route.get("avg_delay", 0),
+                            "predicted_median_delay": route.get("avg_delay", 0),
+                            "generated_at": str(datetime.now())
+                        })
+                    return ApiResponse(success=True, data=forecasts)
+            except:
+                pass
+            return ApiResponse(success=False, data=[], error=f"ML delay forecast not available: {str(e)}")
+    except Exception as e:
+        return ApiResponse(success=False, data=[], error=str(e))
+
+@app.get("/api/hourly-heatmap")
+async def get_hourly_heatmap(agency: Optional[str] = None):
+    """Get hourly performance heatmap data"""
+    try:
+        with get_snowflake_connection() as conn:
+            cursor = conn.cursor()
+            config = get_warehouse_config()
+            snowflake_config = config.get_snowflake_config()
+            database = snowflake_config.get('database', 'USER_DB_HORNET')
+            
+            agency_filter = f"AND rm.AGENCY = '{agency}'" if agency and agency != "All" else ""
+            
+            # Query hourly performance from reliability metrics
+            query = f"""
+                SELECT 
+                    rm.DEPARTURE_HOUR,
+                    rm.DEPARTURE_DATE,
+                    COUNT(*) as TOTAL_DEPARTURES,
+                    AVG(rm.ON_TIME_PCT) as AVG_ON_TIME_PCT,
+                    AVG(rm.AVG_DELAY_SECONDS) as AVG_DELAY
+                FROM {database}.ANALYTICS.RELIABILITY_METRICS rm
+                WHERE rm.DEPARTURE_DATE >= DATEADD(day, -7, CURRENT_DATE())
+                    {agency_filter}
+                GROUP BY rm.DEPARTURE_HOUR, rm.DEPARTURE_DATE
+                ORDER BY rm.DEPARTURE_DATE DESC, rm.DEPARTURE_HOUR
+            """
+            cursor.execute(query)
+            rows = cursor.fetchall()
+            
+            heatmap_data = []
+            for row in rows:
+                heatmap_data.append({
+                    "hour": int(row[0]) if row[0] is not None else 0,
+                    "date": str(row[1]) if row[1] else None,
+                    "total_departures": int(row[2]) if row[2] else 0,
+                    "avg_on_time_pct": float(row[3]) if row[3] else 0,
+                    "avg_delay": float(row[4]) if row[4] else 0
+                })
+            
+            return ApiResponse(success=True, data=heatmap_data)
+    except Exception as e:
+        # If analytics table doesn't exist, return empty data
+        return ApiResponse(success=True, data=[], error=f"Analytics table not available: {str(e)}")
 
 @app.post("/api/chat")
 async def chat(request: ChatRequest):
@@ -1184,7 +1395,7 @@ async def chat(request: ChatRequest):
         # Get Snowflake connection for data queries
         snowflake_conn = None
         try:
-            snowflake_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIG)
+            snowflake_conn = get_snowflake_connection()
         except Exception as e:
             print(f"Snowflake connection failed: {e}")
         
@@ -1199,7 +1410,10 @@ async def chat(request: ChatRequest):
         
         # Close Snowflake connection
         if snowflake_conn:
-            snowflake_conn.close()
+            try:
+                snowflake_conn.close()
+            except:
+                pass
         
         if result["success"]:
             return ChatResponse(
@@ -1262,7 +1476,7 @@ async def get_ai_insight(request: InsightRequest):
         # Get Snowflake connection
         snowflake_conn = None
         try:
-            snowflake_conn = snowflake.connector.connect(**SNOWFLAKE_CONFIG)
+            snowflake_conn = get_snowflake_connection()
         except:
             pass
         

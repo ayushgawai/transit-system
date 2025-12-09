@@ -56,7 +56,7 @@ def init_streaming_table(conn):
     database = snowflake_config.get('database', 'USER_DB_HORNET')
     
     create_table_sql = f"""
-    CREATE TABLE IF NOT EXISTS {database}.ANALYTICS.LANDING_STREAMING_DEPARTURES (
+    CREATE TABLE IF NOT EXISTS {database}.LANDING.LANDING_STREAMING_DEPARTURES (
         ID VARCHAR(255) PRIMARY KEY,
         TIMESTAMP VARCHAR(50),
         GLOBAL_STOP_ID VARCHAR(255),
@@ -143,7 +143,7 @@ def insert_to_snowflake(conn, events):
     database = snowflake_config.get('database', 'USER_DB_HORNET')
     
     insert_sql = f"""
-    INSERT INTO {database}.ANALYTICS.LANDING_STREAMING_DEPARTURES 
+    INSERT INTO {database}.LANDING.LANDING_STREAMING_DEPARTURES 
     (ID, TIMESTAMP, GLOBAL_STOP_ID, STOP_NAME, GLOBAL_ROUTE_ID, ROUTE_SHORT_NAME, 
      ROUTE_LONG_NAME, AGENCY, CITY, SCHEDULED_DEPARTURE_TIME, DEPARTURE_TIME, 
      IS_REAL_TIME, TRIP_SEARCH_KEY, DELAY_SECONDS, CONSUMED_AT)
@@ -232,9 +232,9 @@ def main():
     for agency, count in sorted(agencies.items()):
         print(f"  {agency}: {count} stops")
     
-    cycle_time_min = len(all_stops) * 5  # 5 minutes per stop
+    cycle_time_min = len(all_stops) * 12 / 60  # 12 seconds per stop
     print(f"\n⏱️  Streaming cycle: {len(all_stops)} stops, ~{cycle_time_min:.1f} minutes per full cycle")
-    print(f"   (Rate limit: 1 call per 5 minutes = 300 seconds between calls)")
+    print(f"   (Rate limit: 5 calls per minute = 12 seconds between calls)")
     print()
     
     seen = {}  # key -> last departure_time signature
@@ -268,17 +268,28 @@ def main():
                         route_short = rd.get("route_short_name") or route_id
                         route_long = rd.get("route_long_name") or route_short
                         
-                        # Infer agency from route_id or stop_id
+                        # Infer agency from stop_id prefix first (most reliable), then route_id
                         agency = 'Unknown'
-                        if route_id:
-                            if 'BART' in route_id:
+                        if stop_id and ":" in stop_id:
+                            stop_prefix = stop_id.split(":")[0].upper()
+                            if stop_prefix == 'BART':
                                 agency = 'BART'
-                            elif 'VTA' in route_id:
+                            elif stop_prefix == 'VTA':
                                 agency = 'VTA'
-                            elif 'MUNI' in route_id:
+                            elif stop_prefix == 'MUNI':
                                 agency = 'MUNI'
-                        elif stop_id:
-                            agency = stop_id.split(":")[0] if ":" in stop_id else "Unknown"
+                            elif stop_prefix in ['CALT', 'CALTRAIN']:
+                                agency = 'Caltrain'
+                            else:
+                                agency = stop_prefix  # Use prefix as agency name
+                        elif route_id:
+                            route_upper = route_id.upper()
+                            if 'BART' in route_upper:
+                                agency = 'BART'
+                            elif 'VTA' in route_upper:
+                                agency = 'VTA'
+                            elif 'MUNI' in route_upper:
+                                agency = 'MUNI'
                         
                         for it in rd.get("itineraries", []):
                             headsign = it.get("merged_headsign") or it.get("headsign") or ""
@@ -333,9 +344,9 @@ def main():
                     print(f"  ⚠️  Error fetching {stop_name}: {e}")
                     # Continue with next stop
                 
-                # Rate limit: 1 call per 5 minutes = 300 seconds between calls
+                # Rate limit: 5 calls per minute = 12 seconds between calls
                 if i < len(all_stops) - 1:  # Don't sleep after last stop
-                    time.sleep(300)  # 5 minutes between calls
+                    time.sleep(12)  # 12 seconds between calls
             
             cycle_time = time.time() - cycle_start
             print(f"\n✅ Cycle complete: {cycle_inserted} new records, {cycle_time/60:.1f} minutes")

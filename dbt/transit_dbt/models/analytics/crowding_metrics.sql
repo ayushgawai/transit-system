@@ -19,24 +19,32 @@
 
 WITH departures AS (
     SELECT 
-        departure_key,
-        stop_global_id,
+        id as departure_key,
+        stop_id as stop_global_id,
         stop_name,
-        route_global_id,
+        route_id as route_global_id,
         route_short_name,
-        departure_date,
-        departure_hour,
-        departure_time,
-        occupancy_status,
+        DATE(TO_TIMESTAMP_NTZ(scheduled_departure_time)) as departure_date,
+        HOUR(TO_TIMESTAMP_NTZ(scheduled_departure_time)) as departure_hour,
+        TO_TIMESTAMP_NTZ(actual_departure_time) as departure_time,
+        delay_seconds,
         is_real_time,
-        ingestion_timestamp
-    FROM {{ ref('stg_departures') }}
+        load_timestamp as ingestion_timestamp,
+        -- Estimate occupancy based on delay and time of day (proxy since we don't have actual occupancy)
+        CASE 
+            WHEN HOUR(TO_TIMESTAMP_NTZ(scheduled_departure_time)) BETWEEN 7 AND 9 THEN 0.75  -- AM peak
+            WHEN HOUR(TO_TIMESTAMP_NTZ(scheduled_departure_time)) BETWEEN 17 AND 19 THEN 0.80  -- PM peak
+            WHEN delay_seconds > 300 THEN 0.85  -- High delay suggests crowding
+            ELSE 0.50  -- Off-peak default
+        END AS occupancy_ratio
+    FROM {{ ref('stg_streaming_departures') }}
+    WHERE scheduled_departure_time IS NOT NULL
     {% if is_incremental() %}
-    WHERE ingestion_timestamp > (SELECT COALESCE(MAX(updated_at), '1900-01-01') FROM {{ this }})
+    AND load_timestamp > (SELECT COALESCE(MAX(updated_at), '1900-01-01') FROM {{ this }})
     {% endif %}
 ),
 
--- Map occupancy_status to numeric values (proxy for crowding)
+-- Map occupancy to standardized values (proxy since we don't have actual occupancy data)
 occupancy_mapping AS (
     SELECT
         departure_key,
@@ -47,16 +55,7 @@ occupancy_mapping AS (
         departure_hour,
         departure_time,
         is_real_time,
-        CASE UPPER(COALESCE(occupancy_status, 'UNKNOWN'))
-            WHEN 'EMPTY' THEN 0.0
-            WHEN 'MANY_SEATS_AVAILABLE' THEN 0.25
-            WHEN 'FEW_SEATS_AVAILABLE' THEN 0.50
-            WHEN 'STANDING_ROOM_ONLY' THEN 0.75
-            WHEN 'CRUSHED_STANDING_ROOM_ONLY' THEN 0.95
-            WHEN 'FULL' THEN 1.0
-            WHEN 'NOT_ACCEPTING_PASSENGERS' THEN 1.0
-            ELSE 0.50  -- Default if unknown
-        END AS occupancy_ratio,
+        occupancy_ratio,
         ingestion_timestamp
     FROM departures
 ),

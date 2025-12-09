@@ -167,7 +167,7 @@ dbt_streaming = PythonOperator(
 # Trigger ML Forecast DAG after streaming completes
 trigger_ml_forecast = TriggerDagRunOperator(
     task_id='trigger_ml_forecast_dag',
-    trigger_dag_id='ml_forecast',
+    trigger_dag_id='ml_forecast_dag',
     wait_for_completion=False,  # Don't wait, just trigger
     dag=dag,
 )
