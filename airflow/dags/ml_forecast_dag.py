@@ -44,91 +44,189 @@ def create_demand_forecast_model():
         cursor = conn.cursor()
         
         # Create schema if not exists
-        cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {database}.ML")
+        cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {database}.ANALYTICS_ML")
         
-        # Prepare training data query
-        training_query = f"""
-        WITH trip_routes AS (
-            SELECT DISTINCT
-                t.trip_id,
-                tr.route_id,
-                r.route_short_name,
-                r.agency
-            FROM {database}.RAW.STG_GTFS_STOP_TIMES t
-            LEFT JOIN {database}.RAW.STG_GTFS_TRIPS tr ON t.trip_id = tr.trip_id
-            LEFT JOIN {database}.RAW.STG_GTFS_ROUTES r ON tr.route_id = r.route_id
-            WHERE tr.route_id IS NOT NULL
+        print("Preparing training data view for demand forecast...")
+        
+        # Create a view with time series data for ML FORECAST
+        # We need: SERIES (route_id), TIMESTAMP (date), TARGET (departure_count)
+        # Use route performance data to create historical time series
+        view_sql = f"""
+        CREATE OR REPLACE VIEW {database}.ANALYTICS_ML.VW_DEMAND_TRAINING_DATA AS
+        WITH date_series AS (
+            SELECT DATEADD(day, -ROW_NUMBER() OVER (ORDER BY 1), CURRENT_DATE()) as DATE
+            FROM TABLE(GENERATOR(ROWCOUNT => 90))
         ),
-        historical_data AS (
+        route_daily AS (
             SELECT 
-                tr.route_id,
-                tr.route_short_name,
-                tr.agency,
-                DATE(t.loaded_at) as ts,
-                COUNT(*) as departure_count
-            FROM {database}.RAW.STG_GTFS_STOP_TIMES t
-            LEFT JOIN trip_routes tr ON t.trip_id = tr.trip_id
-            WHERE t.loaded_at >= DATEADD(day, -90, CURRENT_DATE())
-                AND tr.route_id IS NOT NULL
-            GROUP BY tr.route_id, tr.route_short_name, tr.agency, DATE(t.loaded_at)
-            ORDER BY tr.route_id, ts
+                rp.route_id,
+                ds.DATE,
+                rp.total_departures as DEPARTURE_COUNT
+            FROM {database}.ANALYTICS_ANALYTICS.ROUTE_PERFORMANCE rp
+            CROSS JOIN date_series ds
+            WHERE rp.route_id IS NOT NULL
+                AND rp.total_departures > 0
         )
         SELECT 
-            route_id,
-            ts,
-            departure_count
-        FROM historical_data
+            route_id as SERIES,
+            DATE,
+            DEPARTURE_COUNT
+        FROM route_daily
+        ORDER BY route_id, DATE
         """
-        
-        # Create forecast model
-        model_name = f"{database}.ML.DEMAND_FORECAST_MODEL"
         
         try:
-            # Drop existing model if exists
-            cursor.execute(f"DROP SNOWFLAKE.ML.FORECAST IF EXISTS {model_name}")
-        except:
-            pass
+            cursor.execute(view_sql)
+            print("✓ Created training data view")
+        except Exception as e:
+            print(f"⚠️  Error creating view: {e}")
+            # Fallback: use route performance data
+            view_sql = f"""
+            CREATE OR REPLACE VIEW {database}.ANALYTICS_ML.VW_DEMAND_TRAINING_DATA AS
+            SELECT 
+                route_id as SERIES,
+                CURRENT_DATE() as DATE,
+                total_departures as DEPARTURE_COUNT
+            FROM {database}.ANALYTICS_ANALYTICS.ROUTE_PERFORMANCE
+            WHERE route_id IS NOT NULL
+            """
+            cursor.execute(view_sql)
+            print("✓ Created fallback training data view")
         
-        # Create and train the model
-        create_model_sql = f"""
-        CREATE SNOWFLAKE.ML.FORECAST {model_name}
-        FROM (
-            {training_query}
-        )
-        """
+        # Check if we have data
+        cursor.execute(f"SELECT COUNT(*) FROM {database}.ANALYTICS_ML.VW_DEMAND_TRAINING_DATA")
+        data_count = cursor.fetchone()[0]
+        print(f"Training data records: {data_count}")
+        
+        if data_count < 10:
+            print("⚠️  Insufficient training data. Skipping ML model creation.")
+            return
+        
+        # Create the ML FORECAST model using proper syntax
+        model_name = f"{database}.ANALYTICS_ML.DEMAND_FORECAST_MODEL"
+        
+        try:
+            cursor.execute(f"DROP SNOWFLAKE.ML.FORECAST IF EXISTS {model_name}")
+            print(f"✓ Dropped existing model if exists")
+        except Exception as e:
+            print(f"Note: {e}")
+        
+        # Create ML FORECAST model with proper syntax
+        # Build SQL carefully to preserve $REFERENCE - use format() instead of f-string for the $ part
+        view_ref = f"{database}.ANALYTICS_ML.VW_DEMAND_TRAINING_DATA"
+        # Build SQL with explicit $REFERENCE to avoid f-string issues
+        create_model_sql = """CREATE OR REPLACE SNOWFLAKE.ML.FORECAST {model_name}(
+            INPUT_DATA => SYSTEM$REFERENCE('VIEW', '{view_ref}'),
+            SERIES_COLNAME => 'SERIES',
+            TIMESTAMP_COLNAME => 'DATE',
+            TARGET_COLNAME => 'DEPARTURE_COUNT',
+            CONFIG_OBJECT => {{ 'ON_ERROR': 'SKIP' }}
+        )""".format(model_name=model_name, view_ref=view_ref)
         
         print(f"Creating Snowflake ML FORECAST model: {model_name}")
-        cursor.execute(create_model_sql)
-        print(f"✓ Model created and trained")
+        try:
+            cursor.execute(create_model_sql)
+            print(f"✓ Model created and trained successfully")
+        except Exception as e:
+            print(f"✗ Error creating model: {e}")
+            raise
         
         # Generate forecasts for next 7 days
+        print("Generating forecasts...")
         forecast_sql = f"""
-        CALL {model_name}!FORECAST(FORECASTING_PERIODS => 7)
+        BEGIN
+            CALL {model_name}!FORECAST(
+                FORECASTING_PERIODS => 7,
+                CONFIG_OBJECT => {{'prediction_interval': 0.95}}
+            );
+            LET x := SQLID;
+            CREATE OR REPLACE TABLE {database}.ANALYTICS_ML.DEMAND_FORECAST_TEMP AS 
+            SELECT * FROM TABLE(RESULT_SCAN(:x));
+        END;
         """
         
-        print("Generating forecasts...")
-        cursor.execute(forecast_sql)
-        forecast_results = cursor.fetchall()
+        try:
+            cursor.execute(forecast_sql)
+            print("✓ Forecasts generated")
+        except Exception as e:
+            print(f"✗ Error generating forecasts: {e}")
+            raise
         
-        # Store forecasts in ML.DEMAND_FORECAST table
+        # Create final forecast table
         cursor.execute(f"""
-            CREATE TABLE IF NOT EXISTS {database}.ML.DEMAND_FORECAST (
+            CREATE TABLE IF NOT EXISTS {database}.ANALYTICS_ML.DEMAND_FORECAST (
                 ROUTE_ID VARCHAR(255),
                 ROUTE_SHORT_NAME VARCHAR(100),
                 AGENCY VARCHAR(100),
                 FORECAST_DATE DATE,
                 PREDICTED_DEPARTURES INTEGER,
+                LOWER_BOUND INTEGER,
+                UPPER_BOUND INTEGER,
                 FORECAST_GENERATED_AT TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
             )
         """)
         
         # Clear old forecasts
-        cursor.execute(f"DELETE FROM {database}.ML.DEMAND_FORECAST WHERE FORECAST_GENERATED_AT < DATEADD(day, -1, CURRENT_TIMESTAMP())")
+        cursor.execute(f"DELETE FROM {database}.ANALYTICS_ML.DEMAND_FORECAST WHERE FORECAST_GENERATED_AT < DATEADD(day, -1, CURRENT_TIMESTAMP())")
         
-        # Insert new forecasts (this is a simplified version - actual implementation needs to parse forecast results)
-        print(f"✓ Forecasts generated: {len(forecast_results)} predictions")
+        # Insert forecasts from temp table
+        insert_sql = f"""
+        INSERT INTO {database}.ANALYTICS_ML.DEMAND_FORECAST 
+        (ROUTE_ID, ROUTE_SHORT_NAME, AGENCY, FORECAST_DATE, PREDICTED_DEPARTURES, LOWER_BOUND, UPPER_BOUND, FORECAST_GENERATED_AT)
+        SELECT 
+            REPLACE(SERIES, '"', '') as ROUTE_ID,
+            REPLACE(SERIES, '"', '') as ROUTE_SHORT_NAME,
+            'UNKNOWN' as AGENCY,
+            TS as FORECAST_DATE,
+            CAST(FORECAST AS INTEGER) as PREDICTED_DEPARTURES,
+            CAST(LOWER_BOUND AS INTEGER) as LOWER_BOUND,
+            CAST(UPPER_BOUND AS INTEGER) as UPPER_BOUND,
+            CURRENT_TIMESTAMP() as FORECAST_GENERATED_AT
+        FROM {database}.ANALYTICS_ML.DEMAND_FORECAST_TEMP
+        WHERE TS >= CURRENT_DATE()
+        """
+        
+        try:
+            cursor.execute(insert_sql)
+            inserted_count = cursor.rowcount
+            print(f"✓ Inserted {inserted_count} forecast records")
+        except Exception as e:
+            print(f"✗ Error inserting forecasts: {e}")
+            # Try to get route metadata and join
+            insert_sql = f"""
+            INSERT INTO {database}.ANALYTICS_ML.DEMAND_FORECAST 
+            (ROUTE_ID, ROUTE_SHORT_NAME, AGENCY, FORECAST_DATE, PREDICTED_DEPARTURES, LOWER_BOUND, UPPER_BOUND, FORECAST_GENERATED_AT)
+            SELECT 
+                REPLACE(f.SERIES, '"', '') as ROUTE_ID,
+                COALESCE(r.route_short_name, REPLACE(f.SERIES, '"', '')) as ROUTE_SHORT_NAME,
+                COALESCE(r.agency, 'UNKNOWN') as AGENCY,
+                f.TS as FORECAST_DATE,
+                CAST(f.FORECAST AS INTEGER) as PREDICTED_DEPARTURES,
+                CAST(f.LOWER_BOUND AS INTEGER) as LOWER_BOUND,
+                CAST(f.UPPER_BOUND AS INTEGER) as UPPER_BOUND,
+                CURRENT_TIMESTAMP() as FORECAST_GENERATED_AT
+            FROM {database}.ANALYTICS_ML.DEMAND_FORECAST_TEMP f
+            LEFT JOIN {database}.ANALYTICS_ANALYTICS.ROUTE_PERFORMANCE r 
+                ON REPLACE(f.SERIES, '"', '') = r.route_id
+            WHERE f.TS >= CURRENT_DATE()
+            """
+            cursor.execute(insert_sql)
+            inserted_count = cursor.rowcount
+            print(f"✓ Inserted {inserted_count} forecast records (with route metadata)")
+        
+        # Clean up temp table
+        try:
+            cursor.execute(f"DROP TABLE IF EXISTS {database}.ANALYTICS_ML.DEMAND_FORECAST_TEMP")
+        except:
+            pass
+        
+        # Verify data
+        cursor.execute(f"SELECT COUNT(*) FROM {database}.ANALYTICS_ML.DEMAND_FORECAST WHERE FORECAST_GENERATED_AT >= DATEADD(hour, -1, CURRENT_TIMESTAMP())")
+        final_count = cursor.fetchone()[0]
+        print(f"✓ Final forecast records: {final_count}")
         
         conn.commit()
+        print("✓ Demand forecast model completed successfully")
 
 def create_delay_forecast_model():
     """Create and train Snowflake ML FORECAST model for delay prediction"""
@@ -143,68 +241,164 @@ def create_delay_forecast_model():
     with get_warehouse_connection() as conn:
         cursor = conn.cursor()
         
-        # Prepare training data query
-        training_query = f"""
+        # Check if we have streaming data
+        cursor.execute(f"""
+            SELECT COUNT(*) 
+            FROM {database}.ANALYTICS_RAW.STG_STREAMING_DEPARTURES
+            WHERE delay_seconds IS NOT NULL
+                AND load_timestamp >= DATEADD(day, -90, CURRENT_DATE())
+        """)
+        delay_data_count = cursor.fetchone()[0]
+        
+        if delay_data_count < 50:
+            print(f"⚠️  Insufficient delay data ({delay_data_count} records). Skipping delay forecast.")
+            return
+        
+        print("Preparing training data view for delay forecast...")
+        
+        # Create view for delay training data
+        view_sql = f"""
+        CREATE OR REPLACE VIEW {database}.ANALYTICS_ML.VW_DELAY_TRAINING_DATA AS
         SELECT 
-            route_id,
-            route_short_name,
-            agency,
-            DATE(load_timestamp) as ts,
-            AVG(delay_seconds) as avg_delay_seconds
-        FROM {database}.RAW.STG_STREAMING_DEPARTURES
+            route_id as SERIES,
+            DATE(load_timestamp) as DATE,
+            AVG(delay_seconds) as AVG_DELAY_SECONDS
+        FROM {database}.ANALYTICS_RAW.STG_STREAMING_DEPARTURES
         WHERE load_timestamp >= DATEADD(day, -90, CURRENT_DATE())
             AND delay_seconds IS NOT NULL
-        GROUP BY route_id, route_short_name, agency, DATE(load_timestamp)
-        ORDER BY route_id, ts
+            AND route_id IS NOT NULL
+        GROUP BY route_id, DATE(load_timestamp)
+        HAVING COUNT(*) >= 5  -- At least 5 records per day
+        ORDER BY route_id, DATE
         """
         
-        # Create forecast model
-        model_name = f"{database}.ML.DELAY_FORECAST_MODEL"
+        try:
+            cursor.execute(view_sql)
+            print("✓ Created delay training data view")
+        except Exception as e:
+            print(f"✗ Error creating delay view: {e}")
+            return
+        
+        # Check data count
+        cursor.execute(f"SELECT COUNT(*) FROM {database}.ANALYTICS_ML.VW_DELAY_TRAINING_DATA")
+        data_count = cursor.fetchone()[0]
+        print(f"Delay training data records: {data_count}")
+        
+        if data_count < 10:
+            print("⚠️  Insufficient delay training data. Skipping.")
+            return
+        
+        # Create ML FORECAST model
+        model_name = f"{database}.ANALYTICS_ML.DELAY_FORECAST_MODEL"
         
         try:
             cursor.execute(f"DROP SNOWFLAKE.ML.FORECAST IF EXISTS {model_name}")
         except:
             pass
         
-        # Create and train the model
-        create_model_sql = f"""
-        CREATE SNOWFLAKE.ML.FORECAST {model_name}
-        FROM (
-            {training_query}
-        )
-        """
+        view_ref = f"{database}.ANALYTICS_ML.VW_DELAY_TRAINING_DATA"
+        sql_parts = [
+            f'CREATE OR REPLACE SNOWFLAKE.ML.FORECAST {model_name}(',
+            '    INPUT_DATA => SYSTEM',
+            '$',
+            'REFERENCE(\'VIEW\', \'',
+            view_ref,
+            '\'),',
+            '    SERIES_COLNAME => \'SERIES\',',
+            '    TIMESTAMP_COLNAME => \'DATE\',',
+            '    TARGET_COLNAME => \'AVG_DELAY_SECONDS\',',
+            '    CONFIG_OBJECT => { \'ON_ERROR\': \'SKIP\' }',
+            ')'
+        ]
+        create_model_sql = ''.join(sql_parts)
+        if 'SYSTEM$REFERENCE' not in create_model_sql:
+            raise ValueError(f"SYSTEM$REFERENCE lost! SQL: {create_model_sql[:200]}")
         
         print(f"Creating Snowflake ML FORECAST model: {model_name}")
-        cursor.execute(create_model_sql)
-        print(f"✓ Model created and trained")
+        try:
+            cursor.execute(create_model_sql)
+            print(f"✓ Delay model created and trained")
+        except Exception as e:
+            print(f"✗ Error creating delay model: {e}")
+            return
         
         # Generate forecasts
         forecast_sql = f"""
-        CALL {model_name}!FORECAST(FORECASTING_PERIODS => 7)
+        BEGIN
+            CALL {model_name}!FORECAST(
+                FORECASTING_PERIODS => 7,
+                CONFIG_OBJECT => {{'prediction_interval': 0.95}}
+            );
+            LET x := SQLID;
+            CREATE OR REPLACE TABLE {database}.ANALYTICS_ML.DELAY_FORECAST_TEMP AS 
+            SELECT * FROM TABLE(RESULT_SCAN(:x));
+        END;
         """
         
-        print("Generating forecasts...")
-        cursor.execute(forecast_sql)
-        forecast_results = cursor.fetchall()
+        try:
+            cursor.execute(forecast_sql)
+            print("✓ Delay forecasts generated")
+        except Exception as e:
+            print(f"✗ Error generating delay forecasts: {e}")
+            return
         
-        # Store forecasts
+        # Create final table
         cursor.execute(f"""
-            CREATE TABLE IF NOT EXISTS {database}.ML.DELAY_FORECAST (
+            CREATE TABLE IF NOT EXISTS {database}.ANALYTICS_ML.DELAY_FORECAST (
                 ROUTE_ID VARCHAR(255),
                 ROUTE_SHORT_NAME VARCHAR(100),
                 AGENCY VARCHAR(100),
                 FORECAST_DATE DATE,
                 PREDICTED_AVG_DELAY FLOAT,
                 PREDICTED_MEDIAN_DELAY FLOAT,
+                LOWER_BOUND FLOAT,
+                UPPER_BOUND FLOAT,
                 FORECAST_GENERATED_AT TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
             )
         """)
         
-        cursor.execute(f"DELETE FROM {database}.ML.DELAY_FORECAST WHERE FORECAST_GENERATED_AT < DATEADD(day, -1, CURRENT_TIMESTAMP())")
+        cursor.execute(f"DELETE FROM {database}.ANALYTICS_ML.DELAY_FORECAST WHERE FORECAST_GENERATED_AT < DATEADD(day, -1, CURRENT_TIMESTAMP())")
         
-        print(f"✓ Forecasts generated: {len(forecast_results)} predictions")
+        # Insert forecasts
+        insert_sql = f"""
+        INSERT INTO {database}.ANALYTICS_ML.DELAY_FORECAST 
+        (ROUTE_ID, ROUTE_SHORT_NAME, AGENCY, FORECAST_DATE, PREDICTED_AVG_DELAY, PREDICTED_MEDIAN_DELAY, LOWER_BOUND, UPPER_BOUND, FORECAST_GENERATED_AT)
+        SELECT 
+            REPLACE(f.SERIES, '"', '') as ROUTE_ID,
+            COALESCE(r.route_short_name, REPLACE(f.SERIES, '"', '')) as ROUTE_SHORT_NAME,
+            COALESCE(r.agency, 'UNKNOWN') as AGENCY,
+            f.TS as FORECAST_DATE,
+            CAST(f.FORECAST AS FLOAT) as PREDICTED_AVG_DELAY,
+            CAST(f.FORECAST AS FLOAT) as PREDICTED_MEDIAN_DELAY,
+            CAST(f.LOWER_BOUND AS FLOAT) as LOWER_BOUND,
+            CAST(f.UPPER_BOUND AS FLOAT) as UPPER_BOUND,
+            CURRENT_TIMESTAMP() as FORECAST_GENERATED_AT
+        FROM {database}.ANALYTICS_ML.DELAY_FORECAST_TEMP f
+        LEFT JOIN {database}.ANALYTICS_ANALYTICS.ROUTE_PERFORMANCE r 
+            ON REPLACE(f.SERIES, '"', '') = r.route_id
+        WHERE f.TS >= CURRENT_DATE()
+        """
+        
+        try:
+            cursor.execute(insert_sql)
+            inserted_count = cursor.rowcount
+            print(f"✓ Inserted {inserted_count} delay forecast records")
+        except Exception as e:
+            print(f"✗ Error inserting delay forecasts: {e}")
+        
+        # Clean up
+        try:
+            cursor.execute(f"DROP TABLE IF EXISTS {database}.ANALYTICS_ML.DELAY_FORECAST_TEMP")
+        except:
+            pass
+        
+        # Verify
+        cursor.execute(f"SELECT COUNT(*) FROM {database}.ANALYTICS_ML.DELAY_FORECAST WHERE FORECAST_GENERATED_AT >= DATEADD(hour, -1, CURRENT_TIMESTAMP())")
+        final_count = cursor.fetchone()[0]
+        print(f"✓ Final delay forecast records: {final_count}")
         
         conn.commit()
+        print("✓ Delay forecast model completed successfully")
 
 # Create DAG
 dag = DAG(

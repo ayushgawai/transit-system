@@ -177,56 +177,86 @@ export default function LiveData() {
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={(() => {
               const severityData = liveDepartures.reduce((acc, dep) => {
-                if (dep.delay_seconds === null || dep.delay_seconds <= 0) return acc
+                if (dep.delay_seconds === null || dep.delay_seconds === undefined) {
+                  acc['No Delay Data'] = (acc['No Delay Data'] || 0) + 1
+                  return acc
+                }
+                if (dep.delay_seconds <= 0) {
+                  acc['On-Time/Early'] = (acc['On-Time/Early'] || 0) + 1
+                  return acc
+                }
                 let severity = 'Minor (0-5min)'
                 if (dep.delay_seconds > 600) severity = 'Severe (>10min)'
                 else if (dep.delay_seconds > 300) severity = 'Major (5-10min)'
                 
-                if (!acc[severity]) acc[severity] = 0
-                acc[severity]++
+                acc[severity] = (acc[severity] || 0) + 1
                 return acc
               }, {} as Record<string, number>)
               
               return [
+                { severity: 'On-Time/Early', count: severityData['On-Time/Early'] || 0 },
                 { severity: 'Minor (0-5min)', count: severityData['Minor (0-5min)'] || 0 },
                 { severity: 'Major (5-10min)', count: severityData['Major (5-10min)'] || 0 },
-                { severity: 'Severe (>10min)', count: severityData['Severe (>10min)'] || 0 }
+                { severity: 'Severe (>10min)', count: severityData['Severe (>10min)'] || 0 },
+                { severity: 'No Delay Data', count: severityData['No Delay Data'] || 0 }
               ]
             })()}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-              <XAxis dataKey="severity" stroke="#9CA3AF" />
+              <XAxis dataKey="severity" stroke="#9CA3AF" angle={-45} textAnchor="end" height={80} />
               <YAxis stroke="#9CA3AF" />
               <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', color: '#F3F4F6' }} />
-              <Bar dataKey="count" fill="#EF4444" name="Delayed Departures" />
+              <Bar dataKey="count" fill="#EF4444" name="Departures" />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Delay Trend Over Time */}
+        {/* Departures by Hour */}
         <div className="p-4 rounded-xl bg-dark-surface border border-dark-border">
-          <h3 className="text-lg font-semibold text-white mb-4">Average Delay by Hour</h3>
+          <h3 className="text-lg font-semibold text-white mb-4">Departures by Hour</h3>
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={(() => {
-              const hourlyDelays = liveDepartures.reduce((acc, dep) => {
-                if (dep.delay_seconds === null || dep.delay_seconds <= 0) return acc
-                const hour = new Date(dep.load_timestamp).getHours()
+            <BarChart data={(() => {
+              const hourlyData = liveDepartures.reduce((acc, dep) => {
+                let hour = 0
+                try {
+                  if (dep.load_timestamp) {
+                    hour = new Date(dep.load_timestamp).getHours()
+                  } else if (dep.predicted_time) {
+                    hour = new Date(dep.predicted_time).getHours()
+                  } else if (dep.scheduled_time) {
+                    hour = new Date(dep.scheduled_time).getHours()
+                  }
+                } catch (e) {
+                  hour = new Date().getHours()
+                }
                 const key = `${hour}:00`
-                if (!acc[key]) acc[key] = { hour: key, total: 0, count: 0 }
-                acc[key].total += dep.delay_seconds
+                if (!acc[key]) acc[key] = { hour: key, count: 0, withDelay: 0 }
                 acc[key].count++
+                if (dep.delay_seconds !== null && dep.delay_seconds !== undefined && dep.delay_seconds > 0) {
+                  acc[key].withDelay++
+                }
                 return acc
-              }, {} as Record<string, { hour: string; total: number; count: number }>)
+              }, {} as Record<string, { hour: string; count: number; withDelay: number }>)
               
-              return Object.values(hourlyDelays)
-                .map(h => ({ ...h, avgDelay: Math.round(h.total / h.count) }))
+              return Object.values(hourlyData)
+                .map(h => ({ ...h, avgDelay: h.withDelay > 0 ? Math.round((h.withDelay / h.count) * 100) : 0 }))
                 .sort((a, b) => parseInt(a.hour) - parseInt(b.hour))
             })()}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
               <XAxis dataKey="hour" stroke="#9CA3AF" />
-              <YAxis stroke="#9CA3AF" label={{ value: 'Delay (seconds)', angle: -90, position: 'insideLeft' }} />
-              <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', color: '#F3F4F6' }} />
-              <Line type="monotone" dataKey="avgDelay" stroke="#F59E0B" strokeWidth={2} name="Avg Delay (s)" />
-            </LineChart>
+              <YAxis stroke="#9CA3AF" label={{ value: 'Departures', angle: -90, position: 'insideLeft' }} />
+              <Tooltip 
+                contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151', color: '#F3F4F6' }}
+                formatter={(value: number, name: string) => {
+                  if (name === 'count') return [value, 'Total Departures']
+                  if (name === 'withDelay') return [value, 'With Delays']
+                  return [value, name]
+                }}
+              />
+              <Bar dataKey="count" fill="#3B82F6" name="Total Departures" />
+              {liveDepartures.some(d => d.delay_seconds !== null && d.delay_seconds > 0) && (
+                <Bar dataKey="withDelay" fill="#EF4444" name="With Delays" />
+              )}
+            </BarChart>
           </ResponsiveContainer>
         </div>
       </div>
