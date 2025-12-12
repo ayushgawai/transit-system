@@ -84,6 +84,9 @@ if ! python -c "import fastapi" 2>/dev/null; then
     pip install -r api/requirements.txt > /dev/null 2>&1
 fi
 
+# Create logs directory if it doesn't exist
+mkdir -p logs
+
 # Start backend in background
 echo -e "${YELLOW}🚀 Starting Backend API server...${NC}"
 cd api
@@ -122,9 +125,6 @@ echo -e "${GREEN}✅ Frontend started (PID: $FRONTEND_PID)${NC}"
 echo "   Logs: logs/frontend.log"
 echo "   URL: http://localhost:3000"
 echo ""
-
-# Create logs directory if it doesn't exist
-mkdir -p logs
 
 # Summary
 echo "============================================================"

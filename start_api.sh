@@ -6,8 +6,9 @@ cd "$(dirname "$0")"
 # Activate venv
 source venv/bin/activate
 
-# Load secrets
-export $(python3 -c "
+# Load secrets (optional - system uses AWS Secrets Manager by default)
+if [ -f "secrets.yaml" ]; then
+    export $(python3 -c "
 import yaml
 with open('secrets.yaml', 'r') as f:
     secrets = yaml.safe_load(f)
@@ -15,6 +16,9 @@ for k, v in secrets.items():
     if v:
         print(f'{k}={v}')
 " | xargs)
+else
+    echo "Note: secrets.yaml not found. Using AWS Secrets Manager for credentials."
+fi
 
 # Start API
 cd api

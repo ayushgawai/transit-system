@@ -257,6 +257,9 @@ User Answer (Frontend)
 
 ## Quick Start
 
+> **📖 For detailed setup instructions, see [SETUP.md](SETUP.md)**  
+> **✅ Verified portable - see [PORTABILITY.md](PORTABILITY.md) for details**
+
 ### Prerequisites
 
 1. **Docker Desktop** installed and running
