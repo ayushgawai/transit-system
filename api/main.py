@@ -699,7 +699,8 @@ async def get_live_data(agency: Optional[str] = None):
             snowflake_config = config.get_snowflake_config()
             database = snowflake_config.get('database', 'USER_DB_HORNET')
             # Query today's streaming departures from Snowflake
-            # Get data from last 7 days to show recent streaming data
+            # Get data from last 7 days to show recent streaming data, but prioritize today
+            today_start = datetime.combine(today, datetime.min.time())
             week_ago = datetime.now() - timedelta(days=7)
             agency_filter = f"AND d.AGENCY = '{agency}'" if agency and agency != "All" else ""
             query = f"""
@@ -719,7 +720,7 @@ async def get_live_data(agency: Optional[str] = None):
                 WHERE (d.CONSUMED_AT >= %s OR (d.TIMESTAMP IS NOT NULL AND TO_TIMESTAMP_NTZ(d.TIMESTAMP) >= %s))
                 {agency_filter}
                 ORDER BY COALESCE(d.CONSUMED_AT, TO_TIMESTAMP_NTZ(d.TIMESTAMP)) DESC NULLS LAST
-                LIMIT 1000
+                LIMIT 5000
             """
             cursor.execute(query, (week_ago, week_ago))
             rows = cursor.fetchall()
@@ -780,24 +781,31 @@ async def get_live_data(agency: Optional[str] = None):
                     "data_age_seconds": data_age
                 })
             
+            # Filter to today's data for stats
+            today_departures = [d for d in departures if d.get("load_timestamp")]
+            today_departures = [d for d in today_departures if datetime.fromisoformat(d["load_timestamp"].replace('Z', '+00:00')).date() == today]
+            
+            # Use today's data if available, otherwise use all
+            stats_departures = today_departures if today_departures else departures
+            
             # Calculate stats - only count departures with delay data for delay metrics
-            streaming_count = len(departures)  # All are from streaming
-            realtime_count = sum(1 for d in departures if d.get("is_realtime", False))
-            realtime_pct = (realtime_count / len(departures) * 100) if departures else 0
+            streaming_count = len(stats_departures)  # All are from streaming
+            realtime_count = sum(1 for d in stats_departures if d.get("is_realtime", False))
+            realtime_pct = (realtime_count / len(stats_departures) * 100) if stats_departures else 0
             
             # Only consider delays that are not None
-            delays = [d["delay_seconds"] for d in departures if d.get("delay_seconds") is not None]
+            delays = [d["delay_seconds"] for d in stats_departures if d.get("delay_seconds") is not None]
             avg_delay = sum(delays) / len(delays) if delays else 0
-            on_time_count = sum(1 for d in departures if d.get("delay_seconds") is not None and -300 <= d.get("delay_seconds", 0) <= 300)
+            on_time_count = sum(1 for d in stats_departures if d.get("delay_seconds") is not None and -300 <= d.get("delay_seconds", 0) <= 300)
             on_time_pct = (on_time_count / len(delays) * 100) if delays else 0
             
-            latest_update = max([d["load_timestamp"] for d in departures]) if departures else None
+            latest_update = max([d["load_timestamp"] for d in stats_departures]) if stats_departures else None
             # Get minimum data age (most recent data)
-            data_ages = [d["data_age_seconds"] for d in departures if d.get("data_age_seconds", 0) >= 0]
+            data_ages = [d["data_age_seconds"] for d in stats_departures if d.get("data_age_seconds", 0) >= 0]
             freshness_seconds = min(data_ages) if data_ages else 0
             
             stats = {
-                "total_today": len(departures),
+                "total_today": len(stats_departures),
                 "streaming_count": streaming_count,
                 "realtime_count": realtime_count,
                 "realtime_pct": round(realtime_pct, 1),

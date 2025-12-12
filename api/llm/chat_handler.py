@@ -388,8 +388,34 @@ class ChatHandler:
                 ORDER BY ON_TIME_PCT ASC
             """
         
-        # Route performance/reliability
-        if "reliability" in message_lower or "performance" in message_lower:
+        # Route performance/reliability - check for reliability scores table first
+        if "reliability" in message_lower and ("score" in message_lower or "by route" in message_lower):
+            agency_filter = ""
+            if "vta" in message_lower:
+                agency_filter = "AND r.AGENCY = 'VTA'"
+            elif "bart" in message_lower:
+                agency_filter = "AND r.AGENCY = 'BART'"
+            
+            # Try ANALYTICS.RELIABILITY_METRICS first
+            return f"""
+                SELECT 
+                    r.ROUTE_SHORT_NAME,
+                    r.ROUTE_LONG_NAME,
+                    r.AGENCY,
+                    COALESCE(rm.RELIABILITY_SCORE, 0) as RELIABILITY_SCORE,
+                    COALESCE(rm.ON_TIME_PCT, 0) as ON_TIME_PCT,
+                    COALESCE(rm.AVG_DELAY_MINUTES, 0) as AVG_DELAY_MINUTES
+                FROM USER_DB_HORNET.RAW.STG_GTFS_ROUTES r
+                LEFT JOIN USER_DB_HORNET.ANALYTICS_ANALYTICS.ROUTE_PERFORMANCE rm 
+                    ON r.ROUTE_ID = rm.ROUTE_ID
+                WHERE r.AGENCY IN ('BART', 'VTA')
+                {agency_filter}
+                ORDER BY COALESCE(rm.RELIABILITY_SCORE, 0) ASC, r.ROUTE_SHORT_NAME
+                LIMIT 50
+            """
+        
+        # Route performance (general)
+        if "performance" in message_lower and "reliability" not in message_lower:
             return """
                 SELECT 
                     r.ROUTE_SHORT_NAME,
@@ -478,6 +504,38 @@ class ChatHandler:
                     status = "🟢"
                 
                 response += f"{status} **{route_name}** ({agency}): {avg_delay_min} min avg delay ({total} departures)\n"
+            
+            return response
+        
+        # Reliability scores response
+        if "reliability" in message_lower and ("score" in message_lower or "by route" in message_lower):
+            if len(data) == 0:
+                return "No reliability score data is currently available. This might be because the analytics tables haven't been populated yet."
+            
+            response = "Here are the reliability scores by route:\n\n"
+            for i, row in enumerate(data[:20], 1):
+                route_name = row.get('ROUTE_LONG_NAME') or row.get('ROUTE_SHORT_NAME') or row.get('ROUTE_ID', 'Unknown')
+                agency = row.get('AGENCY', 'Unknown')
+                reliability_score = row.get('RELIABILITY_SCORE', 0) or 0
+                on_time_pct = row.get('ON_TIME_PCT', 0) or 0
+                avg_delay = row.get('AVG_DELAY_MINUTES', 0) or 0
+                
+                if reliability_score >= 90:
+                    status = "🟢"
+                elif reliability_score >= 75:
+                    status = "🟡"
+                else:
+                    status = "🔴"
+                
+                response += f"{status} **{route_name}** ({agency}): Reliability {reliability_score:.1f}%"
+                if on_time_pct > 0:
+                    response += f", On-time {on_time_pct:.1f}%"
+                if avg_delay > 0:
+                    response += f", Avg delay {avg_delay:.1f} min"
+                response += "\n"
+            
+            if len(data) > 20:
+                response += f"\n(Showing 20 of {len(data)} routes)"
             
             return response
         

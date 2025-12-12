@@ -593,7 +593,7 @@ Create an ER diagram showing:
 - Faculty and advisors
 
 **Team**:
-- Ayush Gawai (Lead Developer)
+- Ayush Gawai
 - Khushi Donda
 - Aryan Choudhari
 - Bhoomika Lnu
